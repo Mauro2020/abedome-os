@@ -1,0 +1,79 @@
+name: Propose Home Assistant OS release
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: abedome-os-upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  propose:
+    name: Propose latest HAOS release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out ABEDOME integration branch
+        uses: actions/checkout@v6
+        with:
+          ref: abedome/develop
+          fetch-depth: 0
+
+      - name: Find latest official HAOS release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(gh api repos/home-assistant/operating-system/releases/latest --jq .tag_name)"
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch and inspect official release
+        id: comparison
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          git remote add upstream https://github.com/home-assistant/operating-system.git
+          git fetch --force upstream "refs/tags/$TAG:refs/tags/upstream/$TAG"
+          release_commit="$(git rev-parse "upstream/$TAG^{commit}")"
+
+          if git merge-base --is-ancestor "$release_commit" HEAD; then
+            printf 'has_update=false\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          printf 'has_update=true\n' >> "$GITHUB_OUTPUT"
+
+      - name: Update the draft proposal branch
+        if: steps.comparison.outputs.has_update == 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          git switch --detach "upstream/$TAG"
+          git switch -C automation/upstream-haos-release
+          git push origin automation/upstream-haos-release --force
+
+      - name: Open a draft pull request when needed
+        if: steps.comparison.outputs.has_update == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          existing="$(gh pr list             --base abedome/develop             --head automation/upstream-haos-release             --state open             --json number             --jq '.[0].number')"
+
+          if [ -n "$existing" ]; then
+            exit 0
+          fi
+
+          gh pr create             --base abedome/develop             --head automation/upstream-haos-release             --draft             --title "chore(upstream): propose Home Assistant OS $TAG"             --body "## Upstream candidate
+
+          - Source: `home-assistant/operating-system`
+          - Official release: `$TAG`
+          - Target: `abedome/develop`
+
+          This PR is created automatically and must not be merged until ABEDOME has completed build, test, security review and explicit approval."

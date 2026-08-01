@@ -58,22 +58,25 @@ jobs:
           git switch -C automation/upstream-haos-release
           git push origin automation/upstream-haos-release --force
 
-      - name: Open a draft pull request when needed
+      - name: Open or update the draft pull request
         if: steps.comparison.outputs.has_update == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release.outputs.tag }}
         run: |
-          existing="$(gh pr list             --base abedome/develop             --head automation/upstream-haos-release             --state open             --json number             --jq '.[0].number')"
-
-          if [ -n "$existing" ]; then
-            exit 0
-          fi
-
-          gh pr create             --base abedome/develop             --head automation/upstream-haos-release             --draft             --title "chore(upstream): propose Home Assistant OS $TAG"             --body "## Upstream candidate
+          body="## Upstream candidate
 
           - Source: `home-assistant/operating-system`
           - Official release: `$TAG`
           - Target: `abedome/develop`
 
           This PR is created automatically and must not be merged until ABEDOME has completed build, test, security review and explicit approval."
+
+          existing="$(gh pr list             --base abedome/develop             --head automation/upstream-haos-release             --state open             --json number             --jq '.[0].number')"
+
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing"               --title "chore(upstream): propose Home Assistant OS $TAG"               --body "$body"
+            exit 0
+          fi
+
+          gh pr create             --base abedome/develop             --head automation/upstream-haos-release             --draft             --title "chore(upstream): propose Home Assistant OS $TAG"             --body "$body"

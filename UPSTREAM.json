@@ -7,5 +7,11 @@
   "product_branch": "abedome/develop",
   "strategy": "weekly-release-draft-pull-request",
   "approval_required": true,
-  "auto_merge": false
+  "auto_merge": false,
+  "first_validation_target": {
+    "platform": "ova",
+    "architecture": "x86_64",
+    "hypervisor": "proxmox-ve",
+    "artifact_format": "qcow2"
+  }
 }

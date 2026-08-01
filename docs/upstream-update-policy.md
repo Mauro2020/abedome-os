@@ -15,6 +15,8 @@ La pipeline:
 - non modifica `abedome/develop`;
 - usa un solo branch di proposta, così ogni release non approvata resta in una sola PR revisionabile.
 
+Non esiste alcun merge automatico dall'upstream: ogni aggiornamento richiede approvazione esplicita ABEDOME.
+
 ## Approvazione
 
 Una proposta può essere portata avanti solo dopo:

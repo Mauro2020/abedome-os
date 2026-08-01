@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "product": "ABEDOME OS",
+  "upstream": "home-assistant/operating-system",
+  "upstream_default_branch": "dev",
+  "baseline_release": "17.3",
+  "product_branch": "abedome/develop",
+  "strategy": "weekly-release-draft-pull-request",
+  "approval_required": true,
+  "auto_merge": false
+}

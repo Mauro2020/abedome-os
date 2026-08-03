@@ -18,7 +18,7 @@ else ifeq ($(BR2_PACKAGE_HASSIO_CHANNEL_DEV),y)
 HASSIO_VERSION_CHANNEL = "dev"
 endif
 
-HASSIO_SUPERVISOR_IMAGE = $(strip $(BR2_PACKAGE_HASSIO_SUPERVISOR_IMAGE))
+HASSIO_SUPERVISOR_IMAGE = $(call qstrip,$(BR2_PACKAGE_HASSIO_SUPERVISOR_IMAGE))
 HASSIO_CONTAINER_IMAGES_ARCH = supervisor dns audio cli multicast observer core
 
 define HASSIO_CONFIGURE_CMDS
@@ -40,7 +40,7 @@ define HASSIO_BUILD_CMDS
 	$(Q)mkdir -p $(HASSIO_DL_DIR)
 	$(foreach image,$(HASSIO_CONTAINER_IMAGES_ARCH),\
 		$(BR2_EXTERNAL_HASSOS_PATH)/package/hassio/fetch-container-image.sh \
-			$(BR2_PACKAGE_HASSIO_ARCH) $(BR2_PACKAGE_HASSIO_MACHINE) $(@D)/version.json $(image) "$(HASSIO_DL_DIR)" "$(@D)/images"
+		$(BR2_PACKAGE_HASSIO_ARCH) $(BR2_PACKAGE_HASSIO_MACHINE) $(@D)/version.json $(image) "$(HASSIO_DL_DIR)" "$(@D)/images"
 	)
 endef
 

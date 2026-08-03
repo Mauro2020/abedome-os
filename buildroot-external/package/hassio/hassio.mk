@@ -24,7 +24,7 @@ HASSIO_CONTAINER_IMAGES_ARCH = supervisor dns audio cli multicast observer core
 define HASSIO_CONFIGURE_CMDS
 	# Deploy only landing page for "core" by setting version to "landingpage".
 	# Optionally preload an approved Supervisor image for a test build.
-	curl -fsSL $(HASSIO_VERSION_URL)$(HASSIO_VERSION_CHANNEL)".json" | jq --arg supervisor_image "$(HASSIO_SUPERVISOR_IMAGE)" '.core = "landingpage" | if $supervisor_image == "" then . else ($supervisor_image | capture("^(?<name>.+):(?<tag>[^:]+)$")) as $reference | .images.supervisor = $reference.name | .supervisor = $reference.tag end' > $(@D)/version.json
+	curl -fsSL $(HASSIO_VERSION_URL)$(HASSIO_VERSION_CHANNEL)".json" | jq --arg supervisor_image "$(HASSIO_SUPERVISOR_IMAGE)" '.core = "landingpage" | if $$supervisor_image == "" then . else ($$supervisor_image | capture("^(?<name>.+):(?<tag>[^:]+)$$")) as $$reference | .images.supervisor = $$reference.name | .supervisor = $$reference.tag end' > $(@D)/version.json
 endef
 
 define HASSIO_BUILD_CMDS

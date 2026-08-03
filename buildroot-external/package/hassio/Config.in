@@ -18,6 +18,16 @@ config BR2_PACKAGE_HASSIO_MACHINE
 	help
 	  Machine to pull containers for (used for landing page).
 
+config BR2_PACKAGE_HASSIO_SUPERVISOR_IMAGE
+	string "Preloaded Supervisor OCI image"
+	default ""
+	help
+	  Optional full image reference including an immutable test tag, for example:
+	  ghcr.io/mauro2020/abedome-supervisor:pve-e6a5f6fa3cc8
+
+	  When set, this image is preloaded as the initial Supervisor image. Leave it
+	  empty to use the Supervisor image from the selected Home Assistant channel.
+
 choice
 	prompt "Default Channel"
 	default BR2_PACKAGE_HASSIO_CHANNEL_STABLE

@@ -16,13 +16,23 @@ SUPERVISOR_STARTSCRIPT_VERSION="/mnt/data/.hassos-supervisor-version"
 SUPERVISOR_IMAGE="ghcr.io/home-assistant/${SUPERVISOR_ARCH}-hassio-supervisor"
 SUPERVISOR_UPDATE_FEED="${SUPERVISOR_DATA}/update-feed.json"
 SUPERVISOR_VERSION_URL=""
+SUPERVISOR_CONFIGURED_IMAGE=""
 
-# An ABEDOME update feed is opt-in. A missing or malformed configuration keeps
-# the standard Home Assistant update source unchanged.
+# An ABEDOME update feed is opt-in. It must point to the same approved
+# Supervisor image source that was preloaded into the OS image.
 if [ -f "${SUPERVISOR_UPDATE_FEED}" ]; then
     SUPERVISOR_VERSION_URL=$(jq -e -r '.url // empty' "${SUPERVISOR_UPDATE_FEED}" || true)
+    SUPERVISOR_CONFIGURED_IMAGE=$(jq -e -r '.image // empty' "${SUPERVISOR_UPDATE_FEED}" || true)
     case "${SUPERVISOR_VERSION_URL}" in
-        "https://"*"{channel}"*) ;;
+        "https://"*"{channel}"*)
+            case "${SUPERVISOR_CONFIGURED_IMAGE}" in
+                "ghcr.io/"*) SUPERVISOR_IMAGE="${SUPERVISOR_CONFIGURED_IMAGE}" ;;
+                *)
+                    echo "[WARNING] Ignoring update feed without an approved Supervisor image source."
+                    SUPERVISOR_VERSION_URL=""
+                    ;;
+            esac
+            ;;
         *)
             echo "[WARNING] Ignoring invalid Supervisor update-feed configuration."
             SUPERVISOR_VERSION_URL=""

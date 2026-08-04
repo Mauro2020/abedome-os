@@ -1,0 +1,75 @@
+name: Generate ABEDOME test update manifest
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_channel:
+        description: Upstream manifest channel to use as a complete base
+        required: true
+        default: dev
+        type: choice
+        options:
+          - stable
+          - beta
+          - dev
+      supervisor_version:
+        description: Approved ABEDOME Supervisor image tag
+        required: true
+        type: string
+      supervisor_image:
+        description: Approved ABEDOME Supervisor GHCR repository, without tag
+        required: true
+        default: ghcr.io/mauro2020/abedome-supervisor
+        type: string
+      hassos_ova_version:
+        description: Exact signed OVA/RAUC version approved for the test
+        required: true
+        type: string
+      ota_url_template:
+        description: HTTPS RAUC URL template containing {version} and {board}
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    name: Render offline test manifest
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Download upstream base manifest
+        env:
+          CHANNEL: ${{ inputs.source_channel }}
+        run: |
+          curl --fail --silent --show-error --location \
+            "https://version.home-assistant.io/${CHANNEL}.json" \
+            --output upstream-manifest.json
+
+      - name: Render and validate ABEDOME manifest
+        env:
+          SUPERVISOR_VERSION: ${{ inputs.supervisor_version }}
+          SUPERVISOR_IMAGE: ${{ inputs.supervisor_image }}
+          HASSOS_OVA_VERSION: ${{ inputs.hassos_ova_version }}
+          OTA_URL_TEMPLATE: ${{ inputs.ota_url_template }}
+        run: |
+          python3 scripts/render_abedome_update_manifest.py \
+            --source upstream-manifest.json \
+            --output abedome-${{ inputs.source_channel }}.json \
+            --supervisor-version "${SUPERVISOR_VERSION}" \
+            --supervisor-image "${SUPERVISOR_IMAGE}" \
+            --hassos-ova-version "${HASSOS_OVA_VERSION}" \
+            --ota-url-template "${OTA_URL_TEMPLATE}"
+
+      - name: Upload private test artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          archive: false
+          name: abedome-test-update-manifest-${{ inputs.source_channel }}
+          path: abedome-${{ inputs.source_channel }}.json
+          retention-days: 7

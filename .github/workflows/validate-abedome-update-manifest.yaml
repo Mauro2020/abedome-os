@@ -1,0 +1,51 @@
+name: Validate ABEDOME update manifest tooling
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/validate-abedome-update-manifest.yaml"
+      - "scripts/render_abedome_update_manifest.py"
+      - "updates/**"
+  push:
+    branches:
+      - abedome/develop
+    paths:
+      - ".github/workflows/validate-abedome-update-manifest.yaml"
+      - "scripts/render_abedome_update_manifest.py"
+      - "updates/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Render offline test manifest
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Render fixture
+        run: |
+          python3 scripts/render_abedome_update_manifest.py \
+            --source updates/fixtures/upstream-dev.json \
+            --output /tmp/abedome-dev.json \
+            --supervisor-version 2026.08.0 \
+            --supervisor-image ghcr.io/mauro2020/abedome-supervisor \
+            --hassos-ova-version 18.0.dev00000000 \
+            --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb'
+
+      - name: Verify rendered values
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(Path("/tmp/abedome-dev.json").read_text())
+          assert manifest["channel"] == "dev"
+          assert manifest["supervisor"] == "2026.08.0"
+          assert manifest["images"]["supervisor"] == "ghcr.io/mauro2020/abedome-supervisor"
+          assert manifest["hassos"]["ova"] == "18.0.dev00000000"
+          PY

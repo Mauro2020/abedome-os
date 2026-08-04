@@ -28,6 +28,17 @@ config BR2_PACKAGE_HASSIO_SUPERVISOR_IMAGE
 	  When set, this image is preloaded as the initial Supervisor image. Leave it
 	  empty to use the Supervisor image from the selected Home Assistant channel.
 
+config BR2_PACKAGE_HASSIO_SUPERVISOR_VERSION_URL
+	string "Supervisor update-feed URL template"
+	default ""
+	help
+	  Optional HTTPS URL template used by the Supervisor to discover approved
+	  updates. The template must contain {channel}, for example:
+	  https://updates.example.invalid/{channel}.json
+
+	  Leave this empty to keep Home Assistant's standard update source. This
+	  setting does not enable automatic ABEDOME updates by itself.
+
 choice
 	prompt "Default Channel"
 	default BR2_PACKAGE_HASSIO_CHANNEL_STABLE

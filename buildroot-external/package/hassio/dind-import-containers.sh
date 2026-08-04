@@ -17,7 +17,14 @@ for image in $(ls -S /build/images/*.tar); do
 	docker load --input "${image}"
 done
 
-# Tag the Supervisor how the OS expects it to be tagged
+# Tag the Supervisor how the OS expects it to be tagged. A controlled feed,
+# when explicitly configured at build time, uses the approved preloaded source.
 supervisor=$(docker images --filter "label=io.hass.type=supervisor" --quiet)
 arch=$(docker inspect --format '{{ index .Config.Labels "io.hass.arch" }}' "${supervisor}")
-docker tag "${supervisor}" "ghcr.io/home-assistant/${arch}-hassio-supervisor:latest"
+supervisor_image="ghcr.io/home-assistant/${arch}-hassio-supervisor"
+
+if [ -f /build/supervisor-image-repository ]; then
+    supervisor_image=$(cat /build/supervisor-image-repository)
+fi
+
+docker tag "${supervisor}" "${supervisor_image}:latest"

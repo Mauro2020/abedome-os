@@ -14,6 +14,21 @@ SUPERVISOR_STARTUP_MARKER="/run/supervisor/startup-marker"
 SUPERVISOR_CIDFILE="${SUPERVISOR_DATA}/hassio_supervisor.cid"
 SUPERVISOR_STARTSCRIPT_VERSION="/mnt/data/.hassos-supervisor-version"
 SUPERVISOR_IMAGE="ghcr.io/home-assistant/${SUPERVISOR_ARCH}-hassio-supervisor"
+SUPERVISOR_UPDATE_FEED="${SUPERVISOR_DATA}/update-feed.json"
+SUPERVISOR_VERSION_URL=""
+
+# An ABEDOME update feed is opt-in. A missing or malformed configuration keeps
+# the standard Home Assistant update source unchanged.
+if [ -f "${SUPERVISOR_UPDATE_FEED}" ]; then
+    SUPERVISOR_VERSION_URL=$(jq -e -r '.url // empty' "${SUPERVISOR_UPDATE_FEED}" || true)
+    case "${SUPERVISOR_VERSION_URL}" in
+        "https://"*"{channel}"*) ;;
+        *)
+            echo "[WARNING] Ignoring invalid Supervisor update-feed configuration."
+            SUPERVISOR_VERSION_URL=""
+            ;;
+    esac
+fi
 
 SUPERVISOR_IMAGE_ID=$(docker images --no-trunc --filter "reference=${SUPERVISOR_IMAGE}:latest" --format "{{.ID}}" || echo "")
 SUPERVISOR_CONTAINER_ID=$(docker inspect --format='{{.Image}}' hassio_supervisor || echo "")
@@ -45,10 +60,17 @@ if [ -z "${SUPERVISOR_IMAGE_ID}" ]; then
     # broken, this creates a way back (e.g., bad release).
     SUPERVISOR_VERSION=$(jq -r '.supervisor // "stable"' "${SUPERVISOR_DATA}/updater.json" || echo "stable")
 
-    # Get version from stable channel in case we have no local version
-    # information.
+    # Get a version from the configured ABEDOME feed only when it was
+    # explicitly embedded into this image. Otherwise retain the upstream
+    # stable fallback unchanged.
     if [ "${SUPERVISOR_VERSION}" = "stable" ]; then
-        SUPERVISOR_VERSION="$(curl -s --location https://version.home-assistant.io/stable.json | jq -e -r '.supervisor')"
+        if [ -n "${SUPERVISOR_VERSION_URL}" ]; then
+            SUPERVISOR_CHANNEL=$(jq -r '.channel // "stable"' "${SUPERVISOR_DATA}/updater.json" || echo "stable")
+            SUPERVISOR_MANIFEST_URL=$(printf '%s' "${SUPERVISOR_VERSION_URL}" | sed "s/{channel}/${SUPERVISOR_CHANNEL}/g")
+            SUPERVISOR_VERSION="$(curl -s --location "${SUPERVISOR_MANIFEST_URL}" | jq -e -r '.supervisor')"
+        else
+            SUPERVISOR_VERSION="$(curl -s --location https://version.home-assistant.io/stable.json | jq -e -r '.supervisor')"
+        fi
     fi
 
     echo "[WARNING] Supervisor image missing, downloading a fresh one: ${SUPERVISOR_VERSION}"
@@ -112,6 +134,7 @@ if [ -z "${SUPERVISOR_CONTAINER_ID}" ]; then
         -e SUPERVISOR_SHARE=${SUPERVISOR_DATA} \
         -e SUPERVISOR_NAME=hassio_supervisor \
         -e SUPERVISOR_MACHINE=${SUPERVISOR_MACHINE} \
+        ${SUPERVISOR_VERSION_URL:+-e SUPERVISOR_VERSION_URL="${SUPERVISOR_VERSION_URL}"} \
         "${SUPERVISOR_IMAGE}:latest"
 
     # Store the timestamp of this script. If the script changed, let's

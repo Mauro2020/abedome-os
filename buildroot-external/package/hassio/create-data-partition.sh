@@ -5,6 +5,7 @@ build_dir=$1
 dst_dir=$2
 channel=$3
 docker_version=$4
+supervisor_version_url=$5
 
 data_img="${dst_dir}/data.ext4"
 data_dir="${build_dir}/data"
@@ -41,4 +42,10 @@ curl -fsL -o "${data_dir}/supervisor/apparmor/hassio-supervisor" "${APPARMOR_URL
 
 # Persist build-time updater channel
 jq -n --arg channel "${channel}" '{"channel": \$channel}' > "${data_dir}/supervisor/updater.json"
+
+# An optional ABEDOME update feed is written only when explicitly configured.
+# Empty remains the upstream default and does not create this file.
+if [ -n "${supervisor_version_url}" ]; then
+    jq -n --arg url "${supervisor_version_url}" '{"url": \$url}' > "${data_dir}/supervisor/update-feed.json"
+fi
 EOF

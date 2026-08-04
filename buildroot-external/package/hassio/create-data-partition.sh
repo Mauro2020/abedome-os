@@ -6,6 +6,21 @@ dst_dir=$2
 channel=$3
 docker_version=$4
 supervisor_version_url=$5
+preloaded_supervisor_image=$6
+preloaded_supervisor_repository=""
+
+# A controlled feed can only update the same approved image source that the
+# build preloaded. This prevents an update from falling back to another registry.
+if [ -n "${supervisor_version_url}" ]; then
+    if [ -z "${preloaded_supervisor_image}" ] || [ "${preloaded_supervisor_image}" = "${preloaded_supervisor_image%:*}" ]; then
+        echo "A controlled Supervisor update feed requires a tagged preloaded Supervisor image." >&2
+        exit 1
+    fi
+    preloaded_supervisor_repository="${preloaded_supervisor_image%:*}"
+    printf '%s\n' "${preloaded_supervisor_repository}" > "${build_dir}/supervisor-image-repository"
+else
+    rm -f "${build_dir}/supervisor-image-repository"
+fi
 
 data_img="${dst_dir}/data.ext4"
 data_dir="${build_dir}/data"
@@ -46,6 +61,6 @@ jq -n --arg channel "${channel}" '{"channel": \$channel}' > "${data_dir}/supervi
 # An optional ABEDOME update feed is written only when explicitly configured.
 # Empty remains the upstream default and does not create this file.
 if [ -n "${supervisor_version_url}" ]; then
-    jq -n --arg url "${supervisor_version_url}" '{"url": \$url}' > "${data_dir}/supervisor/update-feed.json"
+    jq -n --arg url "${supervisor_version_url}" --arg image "${preloaded_supervisor_repository}" '{"url": \$url, "image": \$image}' > "${data_dir}/supervisor/update-feed.json"
 fi
 EOF

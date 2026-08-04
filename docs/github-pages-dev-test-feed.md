@@ -30,6 +30,13 @@ metadata, the approved ABEDOME Supervisor version, the HAOS version, and the
 signed RAUC download URL. It must never contain user, device, network, or
 installation data.
 
+## RAUC signing secrets
+
+Store `RAUC_CERTIFICATE` and `RAUC_PRIVATE_KEY` as the complete PEM files.
+For compatibility, the build also accepts legacy secrets containing only the
+PEM body. The workflow validates the certificate, private key, and their
+matching public key before starting the expensive build; no secret material
+is printed or uploaded.
 ## Required order
 
 1. Create the production RAUC signing secrets in GitHub.

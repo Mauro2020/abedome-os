@@ -1,0 +1,11 @@
+{
+  "channel": "dev",
+  "hassos": {
+    "ova": "18.0.dev00000000"
+  },
+  "images": {
+    "supervisor": "ghcr.io/home-assistant/{arch}-hassio-supervisor"
+  },
+  "ota": "https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb",
+  "supervisor": "2026.08.0"
+}

@@ -31,6 +31,11 @@ on:
           - stable
           - beta
           - dev
+      abedome_update_test:
+        description: 'Build an isolated ABEDOME Proxmox update-test OVA (manual dev validation only)'
+        required: true
+        type: boolean
+        default: false
 
 env:
   PYTHON_VERSION: "3.13"
@@ -44,7 +49,7 @@ jobs:
       pull-requests: read
       packages: write
     outputs:
-      version_dev: ${{ steps.version_dev.outputs.version_dev }}
+      version_dev: ${{ steps.abedome_update_test.outputs.version_dev || steps.version_dev.outputs.version_dev }}
       version_main: ${{ steps.version.outputs.version_main }}
       version_full: ${{ steps.version.outputs.version_full }}
       channel: ${{ steps.channel.outputs.channel }}
@@ -88,10 +93,39 @@ jobs:
           echo "Development version \"${version_dev}\""
           echo "version_dev=${version_dev}" >> $GITHUB_OUTPUT
 
+      - name: Configure isolated ABEDOME update-test version
+        id: abedome_update_test
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.abedome_update_test }}
+        env:
+          BOARDS: ${{ inputs.boards }}
+          CHANNEL: ${{ inputs.hassio_channel }}
+          PUBLISH: ${{ inputs.publish }}
+          RUN_TESTS: ${{ inputs.run_tests }}
+          BASELINE_SUFFIX: dev0
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/abedome/develop" ]; then
+            echo "::error::The ABEDOME update-test build may only run from abedome/develop."
+            exit 1
+          fi
+          if [ "${BOARDS}" != "ova" ]; then
+            echo "::error::The ABEDOME update-test build requires boards=ova."
+            exit 1
+          fi
+          if [ "${CHANNEL}" != "dev" ]; then
+            echo "::error::The ABEDOME update-test build requires hassio_channel=dev."
+            exit 1
+          fi
+          if [ "${PUBLISH}" != "false" ] || [ "${RUN_TESTS}" != "false" ]; then
+            echo "::error::The ABEDOME update-test build requires publish=false and run_tests=false."
+            exit 1
+          fi
+          echo "version_dev=${BASELINE_SUFFIX}" >> "${GITHUB_OUTPUT}"
+          echo "Using isolated ABEDOME update-test baseline version 17.3.${BASELINE_SUFFIX}."
+
       - name: Set version suffix
         if: ${{ github.event_name != 'release' }}
         env:
-          VERSION_DEV: ${{ steps.version_dev.outputs.version_dev }}
+          VERSION_DEV: ${{ steps.abedome_update_test.outputs.version_dev || steps.version_dev.outputs.version_dev }}
         run: |
           sed -i -E "s/(^VERSION_SUFFIX=\").*(\"$)/\1${VERSION_DEV}\2/" buildroot-external/meta
 
@@ -306,6 +340,14 @@ jobs:
         with:
           image: ${{ needs.prepare.outputs.build_container_image }}
           command: make ${{ matrix.board.defconfig }}_defconfig
+
+      - name: Configure controlled ABEDOME update-test image
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.abedome_update_test }}
+        uses: "./.github/actions/haos-builder-command"
+        with:
+          image: ${{ needs.prepare.outputs.build_container_image }}
+          command: |
+            bash -c 'printf "%s\n" "BR2_PACKAGE_HASSIO_SUPERVISOR_IMAGE=\"ghcr.io/mauro2020/abedome-supervisor:2026.8.0.dev1\"" "BR2_PACKAGE_HASSIO_SUPERVISOR_VERSION_URL=\"https://mauro2020.github.io/abedome-os/updates/{channel}.json\"" >> /build/output/.config && make olddefconfig'
 
       - name: Override release channel
         if: ${{ needs.prepare.outputs.hassio_channel_option != 'BR2_PACKAGE_HASSIO_CHANNEL_STABLE' }}

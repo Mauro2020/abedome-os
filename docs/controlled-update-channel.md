@@ -46,3 +46,25 @@ Do not add a real feed URL to a distribution until all of these are true:
 
 The first real feed must be enabled only in a dedicated test build, never by
 changing the default OVA configuration.
+
+## Dedicated Proxmox update-test build
+
+The `OS build` workflow has an explicit `abedome_update_test` switch. It is
+`false` by default and changes nothing in ordinary builds.
+
+When enabled, the workflow accepts only this deliberately narrow manual scope:
+
+- branch `abedome/develop`;
+- board `ova` (x86-64);
+- channel `dev`;
+- `publish=false` and `run_tests=false`;
+- baseline OS version `17.3.dev0`;
+- preloaded Supervisor `ghcr.io/mauro2020/abedome-supervisor:2026.8.0.dev1`;
+- feed template `https://mauro2020.github.io/abedome-os/updates/{channel}.json`.
+
+The resulting OVA is a lower-version, disposable baseline for one controlled
+Proxmox validation. It is not a release artifact, must not be attached to a
+normal installation, and must not be published to a stable or beta channel.
+
+Create a new VM for the validation. Existing test VMs, snapshots, and normal
+build inputs remain outside this workflow's scope.

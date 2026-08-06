@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - ".github/workflows/validate-abedome-update-manifest.yaml"
+      - ".github/workflows/generate-abedome-test-update-manifest.yaml"
+      - ".github/workflows/publish-abedome-dev-test-feed.yaml"
       - "scripts/render_abedome_update_manifest.py"
       - "updates/**"
   push:
@@ -11,6 +13,8 @@ on:
       - abedome/develop
     paths:
       - ".github/workflows/validate-abedome-update-manifest.yaml"
+      - ".github/workflows/generate-abedome-test-update-manifest.yaml"
+      - ".github/workflows/publish-abedome-dev-test-feed.yaml"
       - "scripts/render_abedome_update_manifest.py"
       - "updates/**"
 
@@ -34,6 +38,8 @@ jobs:
             --output /tmp/abedome-dev.json \
             --supervisor-version 2026.08.0 \
             --supervisor-image ghcr.io/mauro2020/abedome-supervisor \
+            --core-version 2026.9.0.dev1 \
+            --core-image ghcr.io/mauro2020/abedome-core \
             --hassos-ova-version 18.0.dev00000000 \
             --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb'
 
@@ -47,5 +53,39 @@ jobs:
           assert manifest["channel"] == "dev"
           assert manifest["supervisor"] == "2026.08.0"
           assert manifest["images"]["supervisor"] == "ghcr.io/mauro2020/abedome-supervisor"
+          assert manifest["images"]["core"] == "ghcr.io/mauro2020/abedome-core"
+          assert manifest["homeassistant"]["default"] == "2026.9.0.dev0"
+          assert manifest["homeassistant"]["qemux86-64"] == "2026.9.0.dev1"
+          assert manifest["homeassistant"]["qemuarm-64"] == "2026.9.0.dev0"
           assert manifest["hassos"]["ova"] == "18.0.dev00000000"
           PY
+
+      - name: Reject a tagged Core repository
+        run: |
+          set +e
+          python3 scripts/render_abedome_update_manifest.py \
+            --source updates/fixtures/upstream-dev.json \
+            --output /tmp/invalid-abedome-dev.json \
+            --supervisor-version 2026.08.0 \
+            --supervisor-image ghcr.io/mauro2020/abedome-supervisor \
+            --core-version 2026.9.0.dev1 \
+            --core-image ghcr.io/mauro2020/abedome-core:2026.9.0.dev1 \
+            --hassos-ova-version 18.0.dev00000000 \
+            --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb' \
+            2>/tmp/tagged-core-error.log
+          status=$?
+          set -e
+
+          if [ "${status}" -ne 2 ]; then
+            echo "Expected renderer exit status 2, received ${status}."
+            cat /tmp/tagged-core-error.log
+            exit 1
+          fi
+
+          if ! grep -Fq \
+            "images.core must be a repository without tag or digest" \
+            /tmp/tagged-core-error.log; then
+            echo "The renderer failed for an unexpected reason."
+            cat /tmp/tagged-core-error.log
+            exit 1
+          fi

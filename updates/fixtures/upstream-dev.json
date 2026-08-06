@@ -3,7 +3,13 @@
   "hassos": {
     "ova": "18.0.dev00000000"
   },
+  "homeassistant": {
+    "default": "2026.9.0.dev0",
+    "qemuarm-64": "2026.9.0.dev0",
+    "qemux86-64": "2026.9.0.dev0"
+  },
   "images": {
+    "core": "ghcr.io/home-assistant/{machine}-homeassistant",
     "supervisor": "ghcr.io/home-assistant/{arch}-hassio-supervisor"
   },
   "ota": "https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb",

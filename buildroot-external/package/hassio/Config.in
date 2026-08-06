@@ -22,22 +22,26 @@ config BR2_PACKAGE_HASSIO_SUPERVISOR_IMAGE
 	string "Preloaded Supervisor OCI image"
 	default ""
 	help
-	  Optional full image reference including an immutable test tag, for example:
+	  Optional full image reference with an immutable test tag.
+	  For example:
 	  ghcr.io/mauro2020/abedome-supervisor:pve-e6a5f6fa3cc8
 
-	  When set, this image is preloaded as the initial Supervisor image. Leave it
-	  empty to use the Supervisor image from the selected Home Assistant channel.
+	  When set, this image is preloaded as the initial
+	  Supervisor image. Leave it empty to use the image from
+	  the selected Home Assistant channel.
 
 config BR2_PACKAGE_HASSIO_SUPERVISOR_VERSION_URL
 	string "Supervisor update-feed URL template"
 	default ""
 	help
-	  Optional HTTPS URL template used by the Supervisor to discover approved
-	  updates. The template must contain {channel}, for example:
+	  Optional HTTPS URL template used by the Supervisor to
+	  discover approved updates. The template must contain
+	  {channel}, for example:
 	  https://updates.example.invalid/{channel}.json
 
-	  Leave this empty to keep Home Assistant's standard update source. This
-	  setting does not enable automatic ABEDOME updates by itself.
+	  Leave this empty to keep Home Assistant's standard
+	  update source. This setting does not enable automatic
+	  ABEDOME updates by itself.
 
 choice
 	prompt "Default Channel"

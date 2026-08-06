@@ -35,8 +35,11 @@ boot, leaving the standard upstream behaviour in place.
 
 Do not add a real feed URL to a distribution until all of these are true:
 
-1. The manifest is immutable and its container and OS references are pinned.
-2. The ABEDOME Supervisor image and the matching OS artifact have completed CI.
+1. The manifest is versioned and its container tags are checked against
+   explicitly approved digests immediately before publication.
+2. The ABEDOME Supervisor and Core images and the matching OS artifact have
+   completed CI and are published with unique development versions that are
+   never republished.
 3. The RAUC artifact is signed with the private production key; that key is not
    stored in this repository.
 4. The update was installed in the Proxmox test VM and rollback was verified.
@@ -65,6 +68,20 @@ When enabled, the workflow accepts only this deliberately narrow manual scope:
 The resulting OVA is a lower-version, disposable baseline for one controlled
 Proxmox validation. It is not a release artifact, must not be attached to a
 normal installation, and must not be published to a stable or beta channel.
+
+The manually generated dev manifest may replace only
+`homeassistant.qemux86-64` with the approved ABEDOME Core version and set
+`images.core` to the ABEDOME GHCR repository. The upstream version keys for
+other machines remain inherited only for manifest compatibility. Because
+`images.core` is global, the feed is supported exclusively on the dedicated
+OVA/qemux86-64 test build and must not be configured on ARM or another machine
+type. The publication workflow must prove that the requested Core tag still
+resolves to its approved OCI digest immediately before deploying the feed.
+
+The feed schema remains tag-based and cannot pin the client directly to an OCI
+digest. ABEDOME therefore treats every approved Core version tag as append-only:
+the tag must never be republished, and a changed image requires a new version,
+digest, review, and manual feed deployment.
 
 Create a new VM for the validation. Existing test VMs, snapshots, and normal
 build inputs remain outside this workflow's scope.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render and validate an ABEDOME Supervisor update manifest.
+"""Render and validate an ABEDOME controlled update manifest.
 
 The output is intentionally an artifact only. Publishing it as an update feed is
 a separate, human-approved release action.
@@ -40,12 +40,12 @@ def validate_https_template(value: object, name: str, placeholders: tuple[str, .
     return template
 
 
-def validate_image_repository(value: object) -> str:
-    repository = require_value(value, "images.supervisor")
+def validate_image_repository(value: object, name: str) -> str:
+    repository = require_value(value, name)
     if not repository.startswith("ghcr.io/") or repository.count("/") < 2:
-        fail("images.supervisor must be a GHCR repository path")
+        fail(f"{name} must be a GHCR repository path")
     if ":" in repository or "@" in repository:
-        fail("images.supervisor must be a repository without tag or digest")
+        fail(f"{name} must be a repository without tag or digest")
     return repository
 
 
@@ -67,6 +67,15 @@ def validate_manifest(manifest: dict[str, object]) -> None:
 
     require_value(manifest.get("supervisor"), "supervisor")
 
+    homeassistant = manifest.get("homeassistant")
+    if not isinstance(homeassistant, dict):
+        fail("homeassistant must be an object")
+    require_value(homeassistant.get("default"), "homeassistant.default")
+    require_value(
+        homeassistant.get("qemux86-64"),
+        "homeassistant.qemux86-64",
+    )
+
     hassos = manifest.get("hassos")
     if not isinstance(hassos, dict):
         fail("hassos must be an object")
@@ -81,7 +90,8 @@ def validate_manifest(manifest: dict[str, object]) -> None:
     images = manifest.get("images")
     if not isinstance(images, dict):
         fail("images must be an object")
-    validate_image_repository(images.get("supervisor"))
+    validate_image_repository(images.get("core"), "images.core")
+    validate_image_repository(images.get("supervisor"), "images.supervisor")
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -90,6 +100,8 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--supervisor-version", required=True)
     parser.add_argument("--supervisor-image", required=True)
+    parser.add_argument("--core-version", required=True)
+    parser.add_argument("--core-image", required=True)
     parser.add_argument("--hassos-ova-version", required=True)
     parser.add_argument("--ota-url-template", required=True)
     return parser.parse_args()
@@ -105,9 +117,14 @@ def main() -> None:
     hassos = manifest.get("hassos")
     if not isinstance(hassos, dict):
         fail("source manifest hassos must be an object")
+    homeassistant = manifest.get("homeassistant")
+    if not isinstance(homeassistant, dict):
+        fail("source manifest homeassistant must be an object")
 
     manifest["supervisor"] = args.supervisor_version
     images["supervisor"] = args.supervisor_image
+    images["core"] = args.core_image
+    homeassistant["qemux86-64"] = args.core_version
     hassos["ova"] = args.hassos_ova_version
     manifest["ota"] = args.ota_url_template
     validate_manifest(manifest)

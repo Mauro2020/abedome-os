@@ -10,7 +10,12 @@ compatibility, but `images.core` is a global repository setting. This feed is
 therefore supported **only** by the dedicated OVA/qemux86-64 test build and must
 never be configured on ARM or another machine type. Before a manifest is
 generated or published, the requested Core tag must resolve to its explicitly
-approved OCI digest.
+approved OCI digest. Both workflows also require the exact Core development
+version currently installed on the validation VM, as reported by `ha core info`.
+The renderer compares numeric version components and refuses to generate or
+publish a manifest unless the candidate version is strictly newer than that
+installed baseline. This prevents a feed regression such as offering `dev3`
+after `dev202608050310` has already been installed.
 
 A separate manual workflow, `Publish ABEDOME dev test update feed`, may deploy
 a validated **dev-only** manifest to GitHub Pages after all release gates in

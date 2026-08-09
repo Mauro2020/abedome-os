@@ -25,6 +25,10 @@ on:
         description: Approved ABEDOME Core image tag
         required: true
         type: string
+      core_version_baseline:
+        description: Exact Core version currently installed on the validation VM
+        required: true
+        type: string
       core_image:
         description: Approved ABEDOME Core GHCR repository, without tag
         required: true
@@ -67,11 +71,17 @@ jobs:
       - name: Verify approved ABEDOME Core digest
         env:
           CORE_VERSION: ${{ inputs.core_version }}
+          CORE_VERSION_BASELINE: ${{ inputs.core_version_baseline }}
           CORE_IMAGE: ${{ inputs.core_image }}
           CORE_DIGEST: ${{ inputs.core_digest }}
         run: |
           if ! printf '%s' "${CORE_VERSION}" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+\.dev[0-9]+$'; then
             echo "Use a published Core development version such as 2026.9.0.dev1."
+            exit 1
+          fi
+
+          if ! printf '%s' "${CORE_VERSION_BASELINE}" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+\.dev[0-9]+$'; then
+            echo "Use the exact development version reported by ha core info on the validation VM."
             exit 1
           fi
 
@@ -95,6 +105,7 @@ jobs:
           SUPERVISOR_VERSION: ${{ inputs.supervisor_version }}
           SUPERVISOR_IMAGE: ${{ inputs.supervisor_image }}
           CORE_VERSION: ${{ inputs.core_version }}
+          CORE_VERSION_BASELINE: ${{ inputs.core_version_baseline }}
           CORE_IMAGE: ${{ inputs.core_image }}
           HASSOS_OVA_VERSION: ${{ inputs.hassos_ova_version }}
           OTA_URL_TEMPLATE: ${{ inputs.ota_url_template }}
@@ -105,6 +116,7 @@ jobs:
             --supervisor-version "${SUPERVISOR_VERSION}" \
             --supervisor-image "${SUPERVISOR_IMAGE}" \
             --core-version "${CORE_VERSION}" \
+            --core-version-baseline "${CORE_VERSION_BASELINE}" \
             --core-image "${CORE_IMAGE}" \
             --hassos-ova-version "${HASSOS_OVA_VERSION}" \
             --ota-url-template "${OTA_URL_TEMPLATE}"

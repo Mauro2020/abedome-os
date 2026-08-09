@@ -9,11 +9,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
 ALLOWED_CHANNELS = {"stable", "beta", "dev"}
+CORE_DEVELOPMENT_VERSION = re.compile(
+    r"^(?P<year>[0-9]{4})\.(?P<month>[0-9]{1,2})\."
+    r"(?P<patch>[0-9]+)\.dev(?P<build>[0-9]+)$"
+)
 
 
 def fail(message: str) -> None:
@@ -47,6 +52,35 @@ def validate_image_repository(value: object, name: str) -> str:
     if ":" in repository or "@" in repository:
         fail(f"{name} must be a repository without tag or digest")
     return repository
+
+
+def parse_core_development_version(
+    value: object,
+    name: str,
+) -> tuple[int, int, int, int]:
+    version = require_value(value, name)
+    match = CORE_DEVELOPMENT_VERSION.fullmatch(version)
+    if match is None:
+        fail(f"{name} must use the YYYY.M.P.devN development version format")
+    return tuple(int(component) for component in match.groups())
+
+
+def require_newer_core_version(candidate: object, baseline: object) -> None:
+    candidate_version = require_value(candidate, "core version candidate")
+    baseline_version = require_value(baseline, "installed Core version baseline")
+    candidate_parts = parse_core_development_version(
+        candidate_version,
+        "core version candidate",
+    )
+    baseline_parts = parse_core_development_version(
+        baseline_version,
+        "installed Core version baseline",
+    )
+    if candidate_parts <= baseline_parts:
+        fail(
+            f"Core version candidate {candidate_version} must be newer than "
+            f"installed baseline {baseline_version}"
+        )
 
 
 def load_manifest(path: Path) -> dict[str, object]:
@@ -101,6 +135,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--supervisor-version", required=True)
     parser.add_argument("--supervisor-image", required=True)
     parser.add_argument("--core-version", required=True)
+    parser.add_argument("--core-version-baseline", required=True)
     parser.add_argument("--core-image", required=True)
     parser.add_argument("--hassos-ova-version", required=True)
     parser.add_argument("--ota-url-template", required=True)
@@ -120,6 +155,8 @@ def main() -> None:
     homeassistant = manifest.get("homeassistant")
     if not isinstance(homeassistant, dict):
         fail("source manifest homeassistant must be an object")
+
+    require_newer_core_version(args.core_version, args.core_version_baseline)
 
     manifest["supervisor"] = args.supervisor_version
     images["supervisor"] = args.supervisor_image

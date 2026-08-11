@@ -9,13 +9,14 @@ version keys for other machines remain in the manifest for structural
 compatibility, but `images.core` is a global repository setting. This feed is
 therefore supported **only** by the dedicated OVA/qemux86-64 test build and must
 never be configured on ARM or another machine type. Before a manifest is
-generated or published, the requested Core tag must resolve to its explicitly
-approved OCI digest. Both workflows also require the exact Core development
-version currently installed on the validation VM, as reported by `ha core info`.
-The renderer compares numeric version components and refuses to generate or
-publish a manifest unless the candidate version is strictly newer than that
-installed baseline. This prevents a feed regression such as offering `dev3`
-after `dev202608050310` has already been installed.
+generated or published, the requested Supervisor and Core tags must each
+resolve to their explicitly approved OCI digests. Both workflows also require
+the exact Supervisor and Core development versions currently installed on the
+validation VM, as reported by `ha supervisor info` and `ha core info`. The
+renderer compares numeric version components and refuses to generate or publish
+a manifest unless each candidate is strictly newer than its installed baseline.
+This prevents a feed regression such as offering Supervisor `dev2` or Core
+`dev3` after a higher nightly development build has already been installed.
 
 A separate manual workflow, `Publish ABEDOME dev test update feed`, may deploy
 a validated **dev-only** manifest to GitHub Pages after all release gates in
@@ -25,9 +26,9 @@ runs only from the protected `abedome/develop` branch, and never publishes
 stable or beta channels.
 
 The update schema is tag-based. Digest verification is a point-in-time release
-gate, not a registry-enforced immutable reference: an approved version tag must
-never be republished. Any change to that tag requires a new version, digest,
-review, and feed deployment.
+gate, not a registry-enforced immutable reference: approved Supervisor and Core
+version tags must never be republished. Any change to either tag requires a new
+version, digest, review, and feed deployment.
 
 The public endpoint is technical release metadata only. It must never contain
 user, device, network, or installation data. See

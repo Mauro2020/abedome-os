@@ -36,7 +36,8 @@ jobs:
           python3 scripts/render_abedome_update_manifest.py \
             --source updates/fixtures/upstream-dev.json \
             --output /tmp/abedome-dev.json \
-            --supervisor-version 2026.08.0 \
+            --supervisor-version 2026.8.0.dev2 \
+            --supervisor-version-baseline 2026.8.0.dev1 \
             --supervisor-image ghcr.io/mauro2020/abedome-supervisor \
             --core-version 2026.9.0.dev1 \
             --core-version-baseline 2026.9.0.dev0 \
@@ -52,13 +53,50 @@ jobs:
 
           manifest = json.loads(Path("/tmp/abedome-dev.json").read_text())
           assert manifest["channel"] == "dev"
-          assert manifest["supervisor"] == "2026.08.0"
+          assert manifest["supervisor"] == "2026.8.0.dev2"
           assert manifest["images"]["supervisor"] == "ghcr.io/mauro2020/abedome-supervisor"
           assert manifest["images"]["core"] == "ghcr.io/mauro2020/abedome-core"
           assert manifest["homeassistant"]["default"] == "2026.9.0.dev0"
           assert manifest["homeassistant"]["qemux86-64"] == "2026.9.0.dev1"
           assert manifest["homeassistant"]["qemuarm-64"] == "2026.9.0.dev0"
           assert manifest["hassos"]["ova"] == "18.0.dev00000000"
+          PY
+
+      - name: Verify monotonic Supervisor development versions
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+
+          from scripts.render_abedome_update_manifest import (
+              require_newer_supervisor_version,
+          )
+
+          accepted = (
+              ("2026.8.0.dev2", "2026.8.0.dev1"),
+              ("2026.8.0.dev10", "2026.8.0.dev9"),
+              ("2026.9.0.dev1", "2026.8.0.dev202608050310"),
+          )
+          rejected = (
+              ("2026.8.0.dev2", "2026.8.0.dev202608050310"),
+              ("2026.8.0.dev2", "2026.8.0.dev2"),
+              ("2026.8.0.dev2", "not-a-version"),
+          )
+
+          for candidate, baseline in accepted:
+              require_newer_supervisor_version(candidate, baseline)
+
+          for candidate, baseline in rejected:
+              with contextlib.redirect_stderr(io.StringIO()):
+                  try:
+                      require_newer_supervisor_version(candidate, baseline)
+                  except SystemExit as err:
+                      assert err.code == 2
+                  else:
+                      raise AssertionError(
+                          "Expected rejection for Supervisor candidate "
+                          f"{candidate} and baseline {baseline}"
+                      )
           PY
 
       - name: Verify monotonic Core development versions
@@ -103,7 +141,8 @@ jobs:
           python3 scripts/render_abedome_update_manifest.py \
             --source updates/fixtures/upstream-dev.json \
             --output /tmp/regressed-abedome-dev.json \
-            --supervisor-version 2026.08.0 \
+            --supervisor-version 2026.8.0.dev2 \
+            --supervisor-version-baseline 2026.8.0.dev1 \
             --supervisor-image ghcr.io/mauro2020/abedome-supervisor \
             --core-version 2026.9.0.dev3 \
             --core-version-baseline 2026.9.0.dev202608050310 \
@@ -133,13 +172,51 @@ jobs:
             exit 1
           fi
 
+      - name: Reject a Supervisor version regression in the renderer
+        run: |
+          set +e
+          python3 scripts/render_abedome_update_manifest.py \
+            --source updates/fixtures/upstream-dev.json \
+            --output /tmp/regressed-supervisor-abedome-dev.json \
+            --supervisor-version 2026.8.0.dev2 \
+            --supervisor-version-baseline 2026.8.0.dev202608050310 \
+            --supervisor-image ghcr.io/mauro2020/abedome-supervisor \
+            --core-version 2026.9.0.dev1 \
+            --core-version-baseline 2026.9.0.dev0 \
+            --core-image ghcr.io/mauro2020/abedome-core \
+            --hassos-ova-version 18.0.dev00000000 \
+            --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb' \
+            2>/tmp/regressed-supervisor-error.log
+          status=$?
+          set -e
+
+          if [ "${status}" -ne 2 ]; then
+            echo "Expected renderer exit status 2, received ${status}."
+            cat /tmp/regressed-supervisor-error.log
+            exit 1
+          fi
+
+          if ! grep -Fq \
+            "Supervisor version candidate 2026.8.0.dev2 must be newer than installed baseline 2026.8.0.dev202608050310" \
+            /tmp/regressed-supervisor-error.log; then
+            echo "The renderer failed for an unexpected reason."
+            cat /tmp/regressed-supervisor-error.log
+            exit 1
+          fi
+
+          if [ -e /tmp/regressed-supervisor-abedome-dev.json ]; then
+            echo "The renderer wrote a manifest for a rejected Supervisor regression."
+            exit 1
+          fi
+
       - name: Reject a tagged Core repository
         run: |
           set +e
           python3 scripts/render_abedome_update_manifest.py \
             --source updates/fixtures/upstream-dev.json \
             --output /tmp/invalid-abedome-dev.json \
-            --supervisor-version 2026.08.0 \
+            --supervisor-version 2026.8.0.dev2 \
+            --supervisor-version-baseline 2026.8.0.dev1 \
             --supervisor-image ghcr.io/mauro2020/abedome-supervisor \
             --core-version 2026.9.0.dev1 \
             --core-version-baseline 2026.9.0.dev0 \
@@ -153,6 +230,38 @@ jobs:
           if [ "${status}" -ne 2 ]; then
             echo "Expected renderer exit status 2, received ${status}."
             cat /tmp/tagged-core-error.log
+            exit 1
+          fi
+
+      - name: Reject a tagged Supervisor repository
+        run: |
+          set +e
+          python3 scripts/render_abedome_update_manifest.py \
+            --source updates/fixtures/upstream-dev.json \
+            --output /tmp/invalid-supervisor-abedome-dev.json \
+            --supervisor-version 2026.8.0.dev2 \
+            --supervisor-version-baseline 2026.8.0.dev1 \
+            --supervisor-image ghcr.io/mauro2020/abedome-supervisor:2026.8.0.dev2 \
+            --core-version 2026.9.0.dev1 \
+            --core-version-baseline 2026.9.0.dev0 \
+            --core-image ghcr.io/mauro2020/abedome-core \
+            --hassos-ova-version 18.0.dev00000000 \
+            --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb' \
+            2>/tmp/tagged-supervisor-error.log
+          status=$?
+          set -e
+
+          if [ "${status}" -ne 2 ]; then
+            echo "Expected renderer exit status 2, received ${status}."
+            cat /tmp/tagged-supervisor-error.log
+            exit 1
+          fi
+
+          if ! grep -Fq \
+            "images.supervisor must be a repository without tag or digest" \
+            /tmp/tagged-supervisor-error.log; then
+            echo "The renderer failed for an unexpected reason."
+            cat /tmp/tagged-supervisor-error.log
             exit 1
           fi
 

@@ -7,6 +7,14 @@ on:
         description: Published ABEDOME Supervisor test version
         required: true
         type: string
+      supervisor_version_baseline:
+        description: Exact Supervisor version currently installed on the validation VM
+        required: true
+        type: string
+      supervisor_digest:
+        description: Approved OCI digest for the Supervisor image
+        required: true
+        type: string
       core_version:
         description: Published ABEDOME Core development version
         required: true
@@ -50,6 +58,8 @@ jobs:
         env:
           OTA_URL_TEMPLATE: ${{ inputs.ota_url_template }}
           SUPERVISOR_VERSION: ${{ inputs.supervisor_version }}
+          SUPERVISOR_VERSION_BASELINE: ${{ inputs.supervisor_version_baseline }}
+          SUPERVISOR_DIGEST: ${{ inputs.supervisor_digest }}
           CORE_VERSION: ${{ inputs.core_version }}
           CORE_VERSION_BASELINE: ${{ inputs.core_version_baseline }}
           CORE_DIGEST: ${{ inputs.core_digest }}
@@ -61,7 +71,17 @@ jobs:
 
           if ! printf '%s' "${SUPERVISOR_VERSION}" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+\.dev[0-9]+$'; then
             echo "Use a published Supervisor test version such as 2026.8.0.dev1."
-            exit 1
+            exit 2
+          fi
+
+          if ! printf '%s' "${SUPERVISOR_VERSION_BASELINE}" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+\.dev[0-9]+$'; then
+            echo "Use the exact development version reported by ha supervisor info on the validation VM."
+            exit 2
+          fi
+
+          if ! printf '%s' "${SUPERVISOR_DIGEST}" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+            echo "Use the exact sha256 OCI digest produced by the approved Supervisor workflow."
+            exit 2
           fi
 
           if ! printf '%s' "${CORE_VERSION}" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+\.dev[0-9]+$'; then
@@ -87,6 +107,24 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Verify approved ABEDOME Supervisor digest
+        env:
+          SUPERVISOR_VERSION: ${{ inputs.supervisor_version }}
+          SUPERVISOR_DIGEST: ${{ inputs.supervisor_digest }}
+        run: |
+          resolved_digest="$(
+            docker buildx imagetools inspect \
+              "ghcr.io/mauro2020/abedome-supervisor:${SUPERVISOR_VERSION}" \
+              | awk '$1 == "Digest:" && digest == "" { digest = $2 } END { print digest }'
+          )"
+
+          if [ -z "${resolved_digest}" ] || [ "${resolved_digest}" != "${SUPERVISOR_DIGEST}" ]; then
+            echo "The published Supervisor tag does not match the approved OCI digest."
+            echo "Expected: ${SUPERVISOR_DIGEST}"
+            echo "Resolved: ${resolved_digest:-missing}"
+            exit 1
+          fi
 
       - name: Verify approved ABEDOME Core digest
         env:
@@ -115,6 +153,7 @@ jobs:
       - name: Render validated ABEDOME dev manifest
         env:
           SUPERVISOR_VERSION: ${{ inputs.supervisor_version }}
+          SUPERVISOR_VERSION_BASELINE: ${{ inputs.supervisor_version_baseline }}
           CORE_VERSION: ${{ inputs.core_version }}
           CORE_VERSION_BASELINE: ${{ inputs.core_version_baseline }}
           CORE_DIGEST: ${{ inputs.core_digest }}
@@ -125,6 +164,7 @@ jobs:
             --source upstream-dev.json \
             --output site/updates/dev.json \
             --supervisor-version "${SUPERVISOR_VERSION}" \
+            --supervisor-version-baseline "${SUPERVISOR_VERSION_BASELINE}" \
             --supervisor-image "ghcr.io/mauro2020/abedome-supervisor" \
             --core-version "${CORE_VERSION}" \
             --core-version-baseline "${CORE_VERSION_BASELINE}" \
@@ -174,6 +214,8 @@ jobs:
       - name: Publish summary
         env:
           SUPERVISOR_VERSION: ${{ inputs.supervisor_version }}
+          SUPERVISOR_VERSION_BASELINE: ${{ inputs.supervisor_version_baseline }}
+          SUPERVISOR_DIGEST: ${{ inputs.supervisor_digest }}
           CORE_VERSION: ${{ inputs.core_version }}
           CORE_VERSION_BASELINE: ${{ inputs.core_version_baseline }}
           CORE_DIGEST: ${{ inputs.core_digest }}
@@ -183,7 +225,10 @@ jobs:
             echo "## ABEDOME dev test update feed"
             echo
             echo "- Feed: \`${{ steps.deployment.outputs.page_url }}updates/dev.json\`"
-            echo "- Supervisor version: \`${SUPERVISOR_VERSION}\`"
+            echo "- Supervisor candidate: \`${SUPERVISOR_VERSION}\`"
+            echo "- Installed Supervisor baseline: \`${SUPERVISOR_VERSION_BASELINE}\`"
+            echo "- Supervisor image: \`ghcr.io/mauro2020/abedome-supervisor\`"
+            echo "- Supervisor digest: \`${SUPERVISOR_DIGEST}\`"
             echo "- Core version: \`${CORE_VERSION}\`"
             echo "- Installed Core baseline: \`${CORE_VERSION_BASELINE}\`"
             echo "- Core image: \`ghcr.io/mauro2020/abedome-core\`"
@@ -192,6 +237,6 @@ jobs:
             echo "- Supported target: \`ova / qemux86-64 / linux-amd64\`"
             echo
             echo "This is a manually deployed test feed. Stable and beta channels are not published."
-            echo "The Core tag was matched to the approved digest immediately before deployment."
+            echo "The Supervisor and Core tags were matched to their approved digests immediately before deployment."
             echo "The tag-based feed must not be used on another architecture or after republishing that tag."
           } >> "$GITHUB_STEP_SUMMARY"

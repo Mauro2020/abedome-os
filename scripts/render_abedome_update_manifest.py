@@ -83,6 +83,27 @@ def require_newer_core_version(candidate: object, baseline: object) -> None:
         )
 
 
+def require_newer_supervisor_version(candidate: object, baseline: object) -> None:
+    candidate_version = require_value(candidate, "supervisor version candidate")
+    baseline_version = require_value(
+        baseline,
+        "installed Supervisor version baseline",
+    )
+    candidate_parts = parse_core_development_version(
+        candidate_version,
+        "supervisor version candidate",
+    )
+    baseline_parts = parse_core_development_version(
+        baseline_version,
+        "installed Supervisor version baseline",
+    )
+    if candidate_parts <= baseline_parts:
+        fail(
+            f"Supervisor version candidate {candidate_version} must be newer than "
+            f"installed baseline {baseline_version}"
+        )
+
+
 def load_manifest(path: Path) -> dict[str, object]:
     try:
         content = json.loads(path.read_text(encoding="utf-8"))
@@ -133,6 +154,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--supervisor-version", required=True)
+    parser.add_argument("--supervisor-version-baseline", required=True)
     parser.add_argument("--supervisor-image", required=True)
     parser.add_argument("--core-version", required=True)
     parser.add_argument("--core-version-baseline", required=True)
@@ -156,6 +178,10 @@ def main() -> None:
     if not isinstance(homeassistant, dict):
         fail("source manifest homeassistant must be an object")
 
+    require_newer_supervisor_version(
+        args.supervisor_version,
+        args.supervisor_version_baseline,
+    )
     require_newer_core_version(args.core_version, args.core_version_baseline)
 
     manifest["supervisor"] = args.supervisor_version

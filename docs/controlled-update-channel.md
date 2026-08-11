@@ -69,19 +69,22 @@ The resulting OVA is a lower-version, disposable baseline for one controlled
 Proxmox validation. It is not a release artifact, must not be attached to a
 normal installation, and must not be published to a stable or beta channel.
 
-The manually generated dev manifest may replace only
-`homeassistant.qemux86-64` with the approved ABEDOME Core version and set
-`images.core` to the ABEDOME GHCR repository. The upstream version keys for
-other machines remain inherited only for manifest compatibility. Because
-`images.core` is global, the feed is supported exclusively on the dedicated
-OVA/qemux86-64 test build and must not be configured on ARM or another machine
-type. The publication workflow must prove that the requested Core tag still
-resolves to its approved OCI digest immediately before deploying the feed.
+The manually generated dev manifest may replace the Supervisor version and
+image repository, and replace only `homeassistant.qemux86-64` with the approved
+ABEDOME Core version while setting `images.core` to the ABEDOME GHCR repository.
+The upstream version keys for other machines remain inherited only for manifest
+compatibility. Because `images.core` is global, the feed is supported
+exclusively on the dedicated OVA/qemux86-64 test build and must not be configured
+on ARM or another machine type. The publication workflow must prove that the
+requested Supervisor and Core tags still resolve to their approved OCI digests
+immediately before deploying the feed. It also requires the exact installed
+Supervisor and Core baselines and rejects either candidate unless its numeric
+development version is strictly newer.
 
 The feed schema remains tag-based and cannot pin the client directly to an OCI
-digest. ABEDOME therefore treats every approved Core version tag as append-only:
-the tag must never be republished, and a changed image requires a new version,
-digest, review, and manual feed deployment.
+digest. ABEDOME therefore treats every approved Supervisor and Core version tag
+as append-only: the tag must never be republished, and a changed image requires
+a new version, digest, review, and manual feed deployment.
 
 Create a new VM for the validation. Existing test VMs, snapshots, and normal
 build inputs remain outside this workflow's scope.

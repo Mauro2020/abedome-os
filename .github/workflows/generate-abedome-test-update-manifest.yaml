@@ -16,10 +16,18 @@ on:
         description: Approved ABEDOME Supervisor image tag
         required: true
         type: string
+      supervisor_version_baseline:
+        description: Exact Supervisor version currently installed on the validation VM
+        required: true
+        type: string
       supervisor_image:
         description: Approved ABEDOME Supervisor GHCR repository, without tag
         required: true
         default: ghcr.io/mauro2020/abedome-supervisor
+        type: string
+      supervisor_digest:
+        description: Approved OCI digest for the Supervisor image
+        required: true
         type: string
       core_version:
         description: Approved ABEDOME Core image tag
@@ -68,6 +76,45 @@ jobs:
             "https://version.home-assistant.io/${CHANNEL}.json" \
             --output upstream-manifest.json
 
+      - name: Verify approved ABEDOME Supervisor digest
+        env:
+          SUPERVISOR_VERSION: ${{ inputs.supervisor_version }}
+          SUPERVISOR_VERSION_BASELINE: ${{ inputs.supervisor_version_baseline }}
+          SUPERVISOR_IMAGE: ${{ inputs.supervisor_image }}
+          SUPERVISOR_DIGEST: ${{ inputs.supervisor_digest }}
+        run: |
+          if ! printf '%s' "${SUPERVISOR_VERSION}" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+\.dev[0-9]+$'; then
+            echo "Use a published Supervisor development version such as 2026.8.0.dev2."
+            exit 2
+          fi
+
+          if ! printf '%s' "${SUPERVISOR_VERSION_BASELINE}" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+\.dev[0-9]+$'; then
+            echo "Use the exact development version reported by ha supervisor info on the validation VM."
+            exit 2
+          fi
+
+          if [ "${SUPERVISOR_IMAGE}" != "ghcr.io/mauro2020/abedome-supervisor" ]; then
+            echo "Use the approved ABEDOME Supervisor repository."
+            exit 2
+          fi
+
+          if ! printf '%s' "${SUPERVISOR_DIGEST}" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+            echo "Use an exact sha256 OCI digest."
+            exit 2
+          fi
+
+          resolved_digest="$(
+            docker buildx imagetools inspect "${SUPERVISOR_IMAGE}:${SUPERVISOR_VERSION}" \
+              | awk '$1 == "Digest:" && digest == "" { digest = $2 } END { print digest }'
+          )"
+
+          if [ -z "${resolved_digest}" ] || [ "${resolved_digest}" != "${SUPERVISOR_DIGEST}" ]; then
+            echo "The Supervisor image does not match the approved OCI digest."
+            echo "Expected: ${SUPERVISOR_DIGEST}"
+            echo "Resolved: ${resolved_digest:-missing}"
+            exit 1
+          fi
+
       - name: Verify approved ABEDOME Core digest
         env:
           CORE_VERSION: ${{ inputs.core_version }}
@@ -103,6 +150,7 @@ jobs:
       - name: Render and validate ABEDOME manifest
         env:
           SUPERVISOR_VERSION: ${{ inputs.supervisor_version }}
+          SUPERVISOR_VERSION_BASELINE: ${{ inputs.supervisor_version_baseline }}
           SUPERVISOR_IMAGE: ${{ inputs.supervisor_image }}
           CORE_VERSION: ${{ inputs.core_version }}
           CORE_VERSION_BASELINE: ${{ inputs.core_version_baseline }}
@@ -114,6 +162,7 @@ jobs:
             --source upstream-manifest.json \
             --output abedome-${{ inputs.source_channel }}.json \
             --supervisor-version "${SUPERVISOR_VERSION}" \
+            --supervisor-version-baseline "${SUPERVISOR_VERSION_BASELINE}" \
             --supervisor-image "${SUPERVISOR_IMAGE}" \
             --core-version "${CORE_VERSION}" \
             --core-version-baseline "${CORE_VERSION_BASELINE}" \
@@ -128,3 +177,18 @@ jobs:
           name: abedome-test-update-manifest-${{ inputs.source_channel }}
           path: abedome-${{ inputs.source_channel }}.json
           retention-days: 7
+
+      - name: Publish validation summary
+        env:
+          SUPERVISOR_VERSION: ${{ inputs.supervisor_version }}
+          SUPERVISOR_VERSION_BASELINE: ${{ inputs.supervisor_version_baseline }}
+          SUPERVISOR_DIGEST: ${{ inputs.supervisor_digest }}
+        run: |
+          {
+            echo "## ABEDOME private test manifest"
+            echo
+            echo "- Supervisor candidate: \`${SUPERVISOR_VERSION}\`"
+            echo "- Installed Supervisor baseline: \`${SUPERVISOR_VERSION_BASELINE}\`"
+            echo "- Supervisor image: \`ghcr.io/mauro2020/abedome-supervisor\`"
+            echo "- Supervisor digest: \`${SUPERVISOR_DIGEST}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

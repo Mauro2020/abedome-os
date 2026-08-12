@@ -14,9 +14,12 @@ resolve to their explicitly approved OCI digests. Both workflows also require
 the exact Supervisor and Core development versions currently installed on the
 validation VM, as reported by `ha supervisor info` and `ha core info`. The
 renderer compares numeric version components and refuses to generate or publish
-a manifest unless each candidate is strictly newer than its installed baseline.
-This prevents a feed regression such as offering Supervisor `dev2` or Core
-`dev3` after a higher nightly development build has already been installed.
+a manifest if either candidate is older than its installed baseline. One
+component may remain at its exact baseline, but at least one of Supervisor or
+Core must advance, so a complete no-op is also refused. This prevents a feed
+regression such as offering Supervisor `dev2` or Core `dev3` after a higher
+nightly development build has already been installed without forcing unrelated
+components to be republished together.
 
 A separate manual workflow, `Publish ABEDOME dev test update feed`, may deploy
 a validated **dev-only** manifest to GitHub Pages after all release gates in

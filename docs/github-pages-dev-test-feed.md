@@ -20,13 +20,16 @@ only the protected `abedome/develop` branch can deploy.
 The `Publish ABEDOME dev test update feed` workflow is manual-only and:
 
 - runs only from `abedome/develop`;
-- accepts only a versioned ABEDOME Supervisor test image that is newer than the
-  exact version installed on the validation VM;
+- accepts only a versioned ABEDOME Supervisor candidate that is not older than
+  the exact version installed on the validation VM;
 - verifies that the Supervisor tag resolves to the explicitly approved OCI
   digest;
-- accepts only a published, versioned ABEDOME Core development image;
-- rejects a Core candidate that is not newer than the exact installed baseline;
+- accepts only a published, versioned ABEDOME Core candidate that is not older
+  than the exact installed baseline;
 - verifies that the Core tag resolves to the explicitly approved OCI digest;
+- requires at least one of the Supervisor or Core candidates to be newer than
+  its installed baseline, so an unchanged component is allowed but a complete
+  no-op is rejected;
 - supports only the dedicated OVA/qemux86-64 (`linux/amd64`) validation build;
 - renders only the `dev` channel;
 - accepts a RAUC download URL only from releases in this repository;
@@ -56,9 +59,9 @@ is printed or uploaded.
 ## Required order
 
 1. Create the production RAUC signing secrets in GitHub.
-2. Publish unique ABEDOME Supervisor and Core development versions, record the
-   installed baselines, verify the approved digests, and never republish those
-   tags.
+2. Publish a unique development version for every component that advances,
+   record both installed baselines, verify both approved digests, and never
+   republish those tags.
 3. Build and validate a new signed OVA/RAUC test image.
 4. Upload the signed, versioned RAUC bundle to a GitHub Release in this repository.
 5. Run the manual feed workflow with the exact image versions and RAUC URL.

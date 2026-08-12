@@ -78,8 +78,10 @@ exclusively on the dedicated OVA/qemux86-64 test build and must not be configure
 on ARM or another machine type. The publication workflow must prove that the
 requested Supervisor and Core tags still resolve to their approved OCI digests
 immediately before deploying the feed. It also requires the exact installed
-Supervisor and Core baselines and rejects either candidate unless its numeric
-development version is strictly newer.
+Supervisor and Core baselines, rejects a numeric development-version regression
+in either candidate, and requires at least one candidate to advance. The
+unchanged component may match its installed baseline and is still checked
+against its approved digest.
 
 The feed schema remains tag-based and cannot pin the client directly to an OCI
 digest. ABEDOME therefore treats every approved Supervisor and Core version tag

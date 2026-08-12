@@ -65,42 +65,51 @@ def parse_core_development_version(
     return tuple(int(component) for component in match.groups())
 
 
-def require_newer_core_version(candidate: object, baseline: object) -> None:
-    candidate_version = require_value(candidate, "core version candidate")
-    baseline_version = require_value(baseline, "installed Core version baseline")
+def require_non_regressing_development_version(
+    candidate: object,
+    baseline: object,
+    component: str,
+) -> bool:
+    candidate_name = f"{component} version candidate"
+    baseline_name = f"installed {component} version baseline"
+    candidate_version = require_value(candidate, candidate_name)
+    baseline_version = require_value(baseline, baseline_name)
     candidate_parts = parse_core_development_version(
         candidate_version,
-        "core version candidate",
+        candidate_name,
     )
     baseline_parts = parse_core_development_version(
         baseline_version,
-        "installed Core version baseline",
+        baseline_name,
     )
-    if candidate_parts <= baseline_parts:
+    if candidate_parts < baseline_parts:
         fail(
-            f"Core version candidate {candidate_version} must be newer than "
+            f"{component} version candidate {candidate_version} must not be older than "
             f"installed baseline {baseline_version}"
         )
+    return candidate_parts > baseline_parts
 
 
-def require_newer_supervisor_version(candidate: object, baseline: object) -> None:
-    candidate_version = require_value(candidate, "supervisor version candidate")
-    baseline_version = require_value(
-        baseline,
-        "installed Supervisor version baseline",
+def require_component_version_advance(
+    supervisor_candidate: object,
+    supervisor_baseline: object,
+    core_candidate: object,
+    core_baseline: object,
+) -> None:
+    supervisor_advanced = require_non_regressing_development_version(
+        supervisor_candidate,
+        supervisor_baseline,
+        "Supervisor",
     )
-    candidate_parts = parse_core_development_version(
-        candidate_version,
-        "supervisor version candidate",
+    core_advanced = require_non_regressing_development_version(
+        core_candidate,
+        core_baseline,
+        "Core",
     )
-    baseline_parts = parse_core_development_version(
-        baseline_version,
-        "installed Supervisor version baseline",
-    )
-    if candidate_parts <= baseline_parts:
+    if not supervisor_advanced and not core_advanced:
         fail(
-            f"Supervisor version candidate {candidate_version} must be newer than "
-            f"installed baseline {baseline_version}"
+            "at least one of Supervisor or Core must be newer than its "
+            "installed baseline"
         )
 
 
@@ -178,11 +187,12 @@ def main() -> None:
     if not isinstance(homeassistant, dict):
         fail("source manifest homeassistant must be an object")
 
-    require_newer_supervisor_version(
+    require_component_version_advance(
         args.supervisor_version,
         args.supervisor_version_baseline,
+        args.core_version,
+        args.core_version_baseline,
     )
-    require_newer_core_version(args.core_version, args.core_version_baseline)
 
     manifest["supervisor"] = args.supervisor_version
     images["supervisor"] = args.supervisor_image

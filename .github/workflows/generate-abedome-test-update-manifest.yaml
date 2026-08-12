@@ -13,7 +13,7 @@ on:
           - beta
           - dev
       supervisor_version:
-        description: Approved ABEDOME Supervisor image tag
+        description: Supervisor candidate tag; may equal baseline when Core advances
         required: true
         type: string
       supervisor_version_baseline:
@@ -30,7 +30,7 @@ on:
         required: true
         type: string
       core_version:
-        description: Approved ABEDOME Core image tag
+        description: Core candidate tag; may equal baseline when Supervisor advances
         required: true
         type: string
       core_version_baseline:
@@ -183,6 +183,9 @@ jobs:
           SUPERVISOR_VERSION: ${{ inputs.supervisor_version }}
           SUPERVISOR_VERSION_BASELINE: ${{ inputs.supervisor_version_baseline }}
           SUPERVISOR_DIGEST: ${{ inputs.supervisor_digest }}
+          CORE_VERSION: ${{ inputs.core_version }}
+          CORE_VERSION_BASELINE: ${{ inputs.core_version_baseline }}
+          CORE_DIGEST: ${{ inputs.core_digest }}
         run: |
           {
             echo "## ABEDOME private test manifest"
@@ -191,4 +194,8 @@ jobs:
             echo "- Installed Supervisor baseline: \`${SUPERVISOR_VERSION_BASELINE}\`"
             echo "- Supervisor image: \`ghcr.io/mauro2020/abedome-supervisor\`"
             echo "- Supervisor digest: \`${SUPERVISOR_DIGEST}\`"
+            echo "- Core candidate: \`${CORE_VERSION}\`"
+            echo "- Installed Core baseline: \`${CORE_VERSION_BASELINE}\`"
+            echo "- Core image: \`ghcr.io/mauro2020/abedome-core\`"
+            echo "- Core digest: \`${CORE_DIGEST}\`"
           } >> "$GITHUB_STEP_SUMMARY"

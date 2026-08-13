@@ -16,3 +16,4 @@
 
 - [ ] revisione ABEDOME completata;
 - [ ] autorizzato il merge nel branch di integrazione.
+- [ ] se è una sincronizzazione upstream: selezionato **merge commit**, mai squash o rebase.

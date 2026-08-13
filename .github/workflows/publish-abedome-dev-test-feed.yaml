@@ -28,7 +28,11 @@ on:
         required: true
         type: string
       hassos_ova_version:
-        description: Exact signed HAOS OVA/RAUC version
+        description: Signed HAOS OVA/RAUC candidate; may equal baseline when another component advances
+        required: true
+        type: string
+      hassos_ova_version_baseline:
+        description: Exact Operating System version currently installed on the validation VM
         required: true
         type: string
       ota_url_template:
@@ -63,6 +67,8 @@ jobs:
           CORE_VERSION: ${{ inputs.core_version }}
           CORE_VERSION_BASELINE: ${{ inputs.core_version_baseline }}
           CORE_DIGEST: ${{ inputs.core_digest }}
+          HASSOS_OVA_VERSION: ${{ inputs.hassos_ova_version }}
+          HASSOS_OVA_VERSION_BASELINE: ${{ inputs.hassos_ova_version_baseline }}
         run: |
           if [ "${GITHUB_REF}" != "refs/heads/abedome/develop" ]; then
             echo "The ABEDOME dev feed may only be published from abedome/develop."
@@ -97,6 +103,16 @@ jobs:
           if ! printf '%s' "${CORE_DIGEST}" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
             echo "Use the exact sha256 OCI digest produced by the approved Core workflow."
             exit 1
+          fi
+
+          if ! printf '%s' "${HASSOS_OVA_VERSION}" | grep -Eq '^[0-9]+\.[0-9]+(\.dev[0-9]+)?$'; then
+            echo "Use the exact signed OVA/RAUC candidate version."
+            exit 2
+          fi
+
+          if ! printf '%s' "${HASSOS_OVA_VERSION_BASELINE}" | grep -Eq '^[0-9]+\.[0-9]+(\.dev[0-9]+)?$'; then
+            echo "Use the exact Operating System version reported by the validation VM."
+            exit 2
           fi
 
           case "${OTA_URL_TEMPLATE}" in
@@ -144,6 +160,43 @@ jobs:
             exit 1
           fi
 
+      - name: Verify signed OVA update bundle
+        env:
+          HASSOS_OVA_VERSION: ${{ inputs.hassos_ova_version }}
+          OTA_URL_TEMPLATE: ${{ inputs.ota_url_template }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends rauc
+
+          bundle_url="$(
+            printf '%s' "${OTA_URL_TEMPLATE}" \
+              | sed \
+                -e "s/{version}/${HASSOS_OVA_VERSION}/g" \
+                -e 's/{board}/ova/g' \
+                -e 's/{os_name}/haos/g'
+          )"
+          if printf '%s' "${bundle_url}" | grep -Fq '{'; then
+            echo "The OTA URL contains an unsupported unresolved placeholder."
+            exit 1
+          fi
+
+          curl --fail --silent --show-error --location \
+            "${bundle_url}" --output candidate.raucb
+          rauc info \
+            --keyring buildroot-external/ota/abedome-update-signing.pem \
+            --output-format=json-2 \
+            candidate.raucb > rauc-info.json
+
+          if ! jq --exit-status \
+            --arg compatible "haos-ova" \
+            --arg version "${HASSOS_OVA_VERSION}" \
+            '.update.compatible == $compatible and .update.version == $version' \
+            rauc-info.json >/dev/null; then
+            echo "The signed bundle compatibility or version does not exactly match the approved OVA candidate."
+            jq '{compatible: .update.compatible, version: .update.version}' rauc-info.json
+            exit 1
+          fi
+
       - name: Download upstream dev manifest
         run: |
           curl --fail --silent --show-error --location \
@@ -158,6 +211,7 @@ jobs:
           CORE_VERSION_BASELINE: ${{ inputs.core_version_baseline }}
           CORE_DIGEST: ${{ inputs.core_digest }}
           HASSOS_OVA_VERSION: ${{ inputs.hassos_ova_version }}
+          HASSOS_OVA_VERSION_BASELINE: ${{ inputs.hassos_ova_version_baseline }}
           OTA_URL_TEMPLATE: ${{ inputs.ota_url_template }}
         run: |
           python3 scripts/render_abedome_update_manifest.py \
@@ -170,6 +224,7 @@ jobs:
             --core-version-baseline "${CORE_VERSION_BASELINE}" \
             --core-image "ghcr.io/mauro2020/abedome-core" \
             --hassos-ova-version "${HASSOS_OVA_VERSION}" \
+            --hassos-ova-version-baseline "${HASSOS_OVA_VERSION_BASELINE}" \
             --ota-url-template "${OTA_URL_TEMPLATE}"
 
       - name: Create technical landing page
@@ -220,6 +275,7 @@ jobs:
           CORE_VERSION_BASELINE: ${{ inputs.core_version_baseline }}
           CORE_DIGEST: ${{ inputs.core_digest }}
           HASSOS_OVA_VERSION: ${{ inputs.hassos_ova_version }}
+          HASSOS_OVA_VERSION_BASELINE: ${{ inputs.hassos_ova_version_baseline }}
         run: |
           {
             echo "## ABEDOME dev test update feed"
@@ -233,7 +289,8 @@ jobs:
             echo "- Installed Core baseline: \`${CORE_VERSION_BASELINE}\`"
             echo "- Core image: \`ghcr.io/mauro2020/abedome-core\`"
             echo "- Core digest: \`${CORE_DIGEST}\`"
-            echo "- HAOS version: \`${HASSOS_OVA_VERSION}\`"
+            echo "- Operating System candidate: \`${HASSOS_OVA_VERSION}\`"
+            echo "- Installed Operating System baseline: \`${HASSOS_OVA_VERSION_BASELINE}\`"
             echo "- Supported target: \`ova / qemux86-64 / linux-amd64\`"
             echo
             echo "This is a manually deployed test feed. Stable and beta channels are not published."

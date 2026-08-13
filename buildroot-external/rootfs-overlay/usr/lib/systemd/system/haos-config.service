@@ -1,0 +1,11 @@
+[Unit]
+Description=ABEDOME OS configuration manager
+After=haos-bind.target network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/haos-config
+
+[Install]
+WantedBy=multi-user.target
+Alias=hassos-config.service

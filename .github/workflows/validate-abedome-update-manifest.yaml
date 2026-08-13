@@ -43,6 +43,7 @@ jobs:
             --core-version-baseline 2026.9.0.dev0 \
             --core-image ghcr.io/mauro2020/abedome-core \
             --hassos-ova-version 18.0.dev00000000 \
+            --hassos-ova-version-baseline 18.0.dev00000000 \
             --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb'
 
           python3 scripts/render_abedome_update_manifest.py \
@@ -55,6 +56,20 @@ jobs:
             --core-version-baseline 2026.9.0.dev0 \
             --core-image ghcr.io/mauro2020/abedome-core \
             --hassos-ova-version 18.0.dev00000000 \
+            --hassos-ova-version-baseline 18.0.dev00000000 \
+            --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb'
+
+          python3 scripts/render_abedome_update_manifest.py \
+            --source updates/fixtures/upstream-dev.json \
+            --output /tmp/abedome-os-only-dev.json \
+            --supervisor-version 2026.8.0.dev1 \
+            --supervisor-version-baseline 2026.8.0.dev1 \
+            --supervisor-image ghcr.io/mauro2020/abedome-supervisor \
+            --core-version 2026.9.0.dev0 \
+            --core-version-baseline 2026.9.0.dev0 \
+            --core-image ghcr.io/mauro2020/abedome-core \
+            --hassos-ova-version 18.2.dev0 \
+            --hassos-ova-version-baseline 17.3.dev1785881843 \
             --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb'
 
       - name: Verify rendered values
@@ -67,20 +82,55 @@ jobs:
               Path("/tmp/abedome-supervisor-only-dev.json").read_text()
           )
           core_only = json.loads(Path("/tmp/abedome-core-only-dev.json").read_text())
+          os_only = json.loads(Path("/tmp/abedome-os-only-dev.json").read_text())
 
           assert supervisor_only["channel"] == "dev"
           assert supervisor_only["supervisor"] == "2026.8.0.dev2"
           assert supervisor_only["homeassistant"]["qemux86-64"] == "2026.9.0.dev0"
           assert core_only["supervisor"] == "2026.8.0.dev1"
           assert core_only["homeassistant"]["qemux86-64"] == "2026.9.0.dev1"
+          assert os_only["supervisor"] == "2026.8.0.dev1"
+          assert os_only["homeassistant"]["qemux86-64"] == "2026.9.0.dev0"
+          assert os_only["hassos"]["ova"] == "18.2.dev0"
 
-          for manifest in (supervisor_only, core_only):
+          for manifest in (supervisor_only, core_only, os_only):
               assert manifest["images"]["supervisor"] == "ghcr.io/mauro2020/abedome-supervisor"
               assert manifest["images"]["core"] == "ghcr.io/mauro2020/abedome-core"
               assert manifest["homeassistant"]["default"] == "2026.9.0.dev0"
               assert manifest["homeassistant"]["qemuarm-64"] == "2026.9.0.dev0"
-              assert manifest["hassos"]["ova"] == "18.0.dev00000000"
+          assert supervisor_only["hassos"]["ova"] == "18.0.dev00000000"
+          assert core_only["hassos"]["ova"] == "18.0.dev00000000"
           PY
+
+      - name: Verify exact RAUC candidate metadata matching
+        run: |
+          cat > /tmp/valid-rauc-info.json <<'JSON'
+          {"update":{"compatible":"haos-ova","version":"18.2.dev0"}}
+          JSON
+          cat > /tmp/wrong-compatible-rauc-info.json <<'JSON'
+          {"update":{"compatible":"not-haos-ova-other","version":"18.2.dev0"}}
+          JSON
+          cat > /tmp/wrong-version-rauc-info.json <<'JSON'
+          {"update":{"compatible":"haos-ova","version":"18.2.dev0-junk"}}
+          JSON
+
+          matches_candidate() {
+            jq --exit-status \
+              --arg compatible "haos-ova" \
+              --arg version "18.2.dev0" \
+              '.update.compatible == $compatible and .update.version == $version' \
+              "$1" >/dev/null
+          }
+
+          matches_candidate /tmp/valid-rauc-info.json
+          if matches_candidate /tmp/wrong-compatible-rauc-info.json; then
+            echo "Accepted an inexact RAUC compatible value."
+            exit 1
+          fi
+          if matches_candidate /tmp/wrong-version-rauc-info.json; then
+            echo "Accepted an inexact RAUC version value."
+            exit 1
+          fi
 
       - name: Verify monotonic component development versions
         run: |
@@ -94,21 +144,26 @@ jobs:
 
           accepted = (
               # Supervisor-only advance.
-              ("2026.8.0.dev2", "2026.8.0.dev1", "2026.9.0.dev1", "2026.9.0.dev1"),
+              ("2026.8.0.dev2", "2026.8.0.dev1", "2026.9.0.dev1", "2026.9.0.dev1", "18.2.dev0", "18.2.dev0"),
               # Core-only advance.
-              ("2026.8.0.dev2", "2026.8.0.dev2", "2026.9.0.dev2", "2026.9.0.dev1"),
-              # Both components advance, using numeric rather than lexical ordering.
-              ("2026.8.0.dev10", "2026.8.0.dev9", "2026.10.0.dev1", "2026.9.0.dev202608050310"),
+              ("2026.8.0.dev2", "2026.8.0.dev2", "2026.9.0.dev2", "2026.9.0.dev1", "18.2.dev0", "18.2.dev0"),
+              # Operating System-only advance from the validated 17.3 build.
+              ("2026.8.0.dev2", "2026.8.0.dev2", "2026.9.0.dev2", "2026.9.0.dev2", "18.2.dev0", "17.3.dev1785881843"),
+              # Numeric rather than lexical ordering, plus dev-to-stable promotion.
+              ("2026.8.0.dev10", "2026.8.0.dev9", "2026.10.0.dev1", "2026.9.0.dev202608050310", "18.2", "18.2.dev10"),
           )
           rejected = (
               # Supervisor regression, even though Core advances.
-              ("2026.8.0.dev2", "2026.8.0.dev3", "2026.9.0.dev2", "2026.9.0.dev1"),
+              ("2026.8.0.dev2", "2026.8.0.dev3", "2026.9.0.dev2", "2026.9.0.dev1", "18.2.dev0", "18.2.dev0"),
               # Core regression, even though Supervisor advances.
-              ("2026.8.0.dev3", "2026.8.0.dev2", "2026.9.0.dev1", "2026.9.0.dev2"),
+              ("2026.8.0.dev3", "2026.8.0.dev2", "2026.9.0.dev1", "2026.9.0.dev2", "18.2.dev0", "18.2.dev0"),
+              # Operating System regression, even though Supervisor advances.
+              ("2026.8.0.dev3", "2026.8.0.dev2", "2026.9.0.dev2", "2026.9.0.dev2", "17.3.dev1", "18.2.dev0"),
               # Complete no-op.
-              ("2026.8.0.dev2", "2026.8.0.dev2", "2026.9.0.dev1", "2026.9.0.dev1"),
-              ("not-a-version", "2026.8.0.dev2", "2026.9.0.dev2", "2026.9.0.dev1"),
-              ("2026.8.0.dev3", "2026.8.0.dev2", "2026.9.0.dev2", "not-a-version"),
+              ("2026.8.0.dev2", "2026.8.0.dev2", "2026.9.0.dev1", "2026.9.0.dev1", "18.2.dev0", "18.2.dev0"),
+              ("not-a-version", "2026.8.0.dev2", "2026.9.0.dev2", "2026.9.0.dev1", "18.2.dev0", "18.2.dev0"),
+              ("2026.8.0.dev3", "2026.8.0.dev2", "2026.9.0.dev2", "not-a-version", "18.2.dev0", "18.2.dev0"),
+              ("2026.8.0.dev3", "2026.8.0.dev3", "2026.9.0.dev2", "2026.9.0.dev2", "not-a-version", "18.2.dev0"),
           )
 
           for versions in accepted:
@@ -137,6 +192,7 @@ jobs:
             --core-version-baseline 2026.9.0.dev202608050310 \
             --core-image ghcr.io/mauro2020/abedome-core \
             --hassos-ova-version 18.0.dev00000000 \
+            --hassos-ova-version-baseline 18.0.dev00000000 \
             --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb' \
             2>/tmp/regressed-core-error.log
           status=$?
@@ -174,6 +230,7 @@ jobs:
             --core-version-baseline 2026.9.0.dev0 \
             --core-image ghcr.io/mauro2020/abedome-core \
             --hassos-ova-version 18.0.dev00000000 \
+            --hassos-ova-version-baseline 18.0.dev00000000 \
             --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb' \
             2>/tmp/regressed-supervisor-error.log
           status=$?
@@ -198,6 +255,44 @@ jobs:
             exit 1
           fi
 
+      - name: Reject an Operating System version regression in the renderer
+        run: |
+          set +e
+          python3 scripts/render_abedome_update_manifest.py \
+            --source updates/fixtures/upstream-dev.json \
+            --output /tmp/regressed-os-abedome-dev.json \
+            --supervisor-version 2026.8.0.dev2 \
+            --supervisor-version-baseline 2026.8.0.dev1 \
+            --supervisor-image ghcr.io/mauro2020/abedome-supervisor \
+            --core-version 2026.9.0.dev1 \
+            --core-version-baseline 2026.9.0.dev1 \
+            --core-image ghcr.io/mauro2020/abedome-core \
+            --hassos-ova-version 17.3.dev1785881843 \
+            --hassos-ova-version-baseline 18.2.dev0 \
+            --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb' \
+            2>/tmp/regressed-os-error.log
+          status=$?
+          set -e
+
+          if [ "${status}" -ne 2 ]; then
+            echo "Expected renderer exit status 2, received ${status}."
+            cat /tmp/regressed-os-error.log
+            exit 1
+          fi
+
+          if ! grep -Fq \
+            "Operating System version candidate 17.3.dev1785881843 must not be older than installed baseline 18.2.dev0" \
+            /tmp/regressed-os-error.log; then
+            echo "The renderer failed for an unexpected reason."
+            cat /tmp/regressed-os-error.log
+            exit 1
+          fi
+
+          if [ -e /tmp/regressed-os-abedome-dev.json ]; then
+            echo "The renderer wrote a manifest for a rejected Operating System regression."
+            exit 1
+          fi
+
       - name: Reject a component version no-op in the renderer
         run: |
           set +e
@@ -211,6 +306,7 @@ jobs:
             --core-version-baseline 2026.9.0.dev1 \
             --core-image ghcr.io/mauro2020/abedome-core \
             --hassos-ova-version 18.0.dev00000000 \
+            --hassos-ova-version-baseline 18.0.dev00000000 \
             --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb' \
             2>/tmp/no-op-error.log
           status=$?
@@ -223,7 +319,7 @@ jobs:
           fi
 
           if ! grep -Fq \
-            "at least one of Supervisor or Core must be newer than its installed baseline" \
+            "at least one of Supervisor, Core or Operating System must be newer than its installed baseline" \
             /tmp/no-op-error.log; then
             echo "The renderer failed for an unexpected reason."
             cat /tmp/no-op-error.log
@@ -248,6 +344,7 @@ jobs:
             --core-version-baseline 2026.9.0.dev0 \
             --core-image ghcr.io/mauro2020/abedome-core:2026.9.0.dev1 \
             --hassos-ova-version 18.0.dev00000000 \
+            --hassos-ova-version-baseline 18.0.dev00000000 \
             --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb' \
             2>/tmp/tagged-core-error.log
           status=$?
@@ -272,6 +369,7 @@ jobs:
             --core-version-baseline 2026.9.0.dev0 \
             --core-image ghcr.io/mauro2020/abedome-core \
             --hassos-ova-version 18.0.dev00000000 \
+            --hassos-ova-version-baseline 18.0.dev00000000 \
             --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb' \
             2>/tmp/tagged-supervisor-error.log
           status=$?

@@ -24,7 +24,7 @@ config BR2_PACKAGE_HASSIO_SUPERVISOR_IMAGE
 	help
 	  Optional full image reference with an immutable test tag.
 	  For example:
-	  ghcr.io/mauro2020/abedome-supervisor:pve-e6a5f6fa3cc8
+	  ghcr.io/mauro2020/abedome-supervisor:2026.8.0.dev4
 
 	  When set, this image is preloaded as the initial
 	  Supervisor image. Leave it empty to use the image from

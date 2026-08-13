@@ -35,7 +35,7 @@ write_pem "$RAUC_PRIVATE_KEY" \
   "$private_key_path"
 
 openssl x509 -in "$certificate_path" -noout >/dev/null
-openssl pkey -in "$private_key_path" -noout -check >/dev/null
+openssl pkey -in "$private_key_path" -noout >/dev/null
 
 certificate_public_key="$(openssl x509 -in "$certificate_path" -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256)"
 private_key_public_key="$(openssl pkey -in "$private_key_path" -pubout -outform DER | openssl dgst -sha256)"

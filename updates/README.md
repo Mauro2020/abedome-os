@@ -11,22 +11,21 @@ therefore supported **only** by the dedicated OVA/qemux86-64 test build and must
 never be configured on ARM or another machine type. Before a manifest is
 generated or published, the requested Supervisor and Core tags must each
 resolve to their explicitly approved OCI digests. Both workflows also require
-the exact Supervisor and Core development versions currently installed on the
-validation VM, as reported by `ha supervisor info` and `ha core info`. The
-renderer compares numeric version components and refuses to generate or publish
-a manifest if either candidate is older than its installed baseline. One
-component may remain at its exact baseline, but at least one of Supervisor or
-Core must advance, so a complete no-op is also refused. This prevents a feed
-regression such as offering Supervisor `dev2` or Core `dev3` after a higher
-nightly development build has already been installed without forcing unrelated
-components to be republished together.
+the exact Supervisor, Core and Operating System versions currently installed on
+the validation VM. The renderer compares numeric version components and refuses
+to generate or publish a manifest if any candidate is older than its installed
+baseline. Components may remain at their exact baselines, but at least one of
+Supervisor, Core or Operating System must advance, so a complete no-op is also
+refused. This permits the signed `17.3.dev1785881843` to `18.2.dev0` OS-only
+migration without republishing Core or Supervisor.
 
 A separate manual workflow, `Publish ABEDOME dev test update feed`, may deploy
 a validated **dev-only** manifest to GitHub Pages after all release gates in
 [controlled-update-channel.md](../docs/controlled-update-channel.md) have been
 completed. It accepts RAUC bundles only from GitHub Releases in this repository,
-runs only from the protected `abedome/develop` branch, and never publishes
-stable or beta channels.
+downloads the resolved OVA bundle, verifies its ABEDOME signature,
+compatibility and version, runs only from the protected `abedome/develop`
+branch, and never publishes stable or beta channels.
 
 The update schema is tag-based. Digest verification is a point-in-time release
 gate, not a registry-enforced immutable reference: approved Supervisor and Core

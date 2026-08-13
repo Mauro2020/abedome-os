@@ -19,6 +19,10 @@ CORE_DEVELOPMENT_VERSION = re.compile(
     r"^(?P<year>[0-9]{4})\.(?P<month>[0-9]{1,2})\."
     r"(?P<patch>[0-9]+)\.dev(?P<build>[0-9]+)$"
 )
+HASSOS_VERSION = re.compile(
+    r"^(?P<major>[0-9]+)\.(?P<minor>[0-9]+)"
+    r"(?:\.dev(?P<build>[0-9]+))?$"
+)
 
 
 def fail(message: str) -> None:
@@ -90,11 +94,43 @@ def require_non_regressing_development_version(
     return candidate_parts > baseline_parts
 
 
+def parse_hassos_version(value: object, name: str) -> tuple[int, int, int, int]:
+    version = require_value(value, name)
+    match = HASSOS_VERSION.fullmatch(version)
+    if match is None:
+        fail(f"{name} must use the M.m or M.m.devN HAOS version format")
+    major = int(match.group("major"))
+    minor = int(match.group("minor"))
+    build = match.group("build")
+    # A stable M.m release follows its M.m.devN development builds.
+    return (major, minor, 1, 0) if build is None else (major, minor, 0, int(build))
+
+
+def require_non_regressing_hassos_version(
+    candidate: object,
+    baseline: object,
+) -> bool:
+    candidate_name = "Operating System version candidate"
+    baseline_name = "installed Operating System version baseline"
+    candidate_version = require_value(candidate, candidate_name)
+    baseline_version = require_value(baseline, baseline_name)
+    candidate_parts = parse_hassos_version(candidate_version, candidate_name)
+    baseline_parts = parse_hassos_version(baseline_version, baseline_name)
+    if candidate_parts < baseline_parts:
+        fail(
+            f"Operating System version candidate {candidate_version} must not be "
+            f"older than installed baseline {baseline_version}"
+        )
+    return candidate_parts > baseline_parts
+
+
 def require_component_version_advance(
     supervisor_candidate: object,
     supervisor_baseline: object,
     core_candidate: object,
     core_baseline: object,
+    hassos_candidate: object,
+    hassos_baseline: object,
 ) -> None:
     supervisor_advanced = require_non_regressing_development_version(
         supervisor_candidate,
@@ -106,9 +142,13 @@ def require_component_version_advance(
         core_baseline,
         "Core",
     )
-    if not supervisor_advanced and not core_advanced:
+    hassos_advanced = require_non_regressing_hassos_version(
+        hassos_candidate,
+        hassos_baseline,
+    )
+    if not supervisor_advanced and not core_advanced and not hassos_advanced:
         fail(
-            "at least one of Supervisor or Core must be newer than its "
+            "at least one of Supervisor, Core or Operating System must be newer than its "
             "installed baseline"
         )
 
@@ -169,6 +209,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--core-version-baseline", required=True)
     parser.add_argument("--core-image", required=True)
     parser.add_argument("--hassos-ova-version", required=True)
+    parser.add_argument("--hassos-ova-version-baseline", required=True)
     parser.add_argument("--ota-url-template", required=True)
     return parser.parse_args()
 
@@ -192,6 +233,8 @@ def main() -> None:
         args.supervisor_version_baseline,
         args.core_version,
         args.core_version_baseline,
+        args.hassos_ova_version,
+        args.hassos_ova_version_baseline,
     )
 
     manifest["supervisor"] = args.supervisor_version

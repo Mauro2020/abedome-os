@@ -27,21 +27,24 @@ The `Publish ABEDOME dev test update feed` workflow is manual-only and:
 - accepts only a published, versioned ABEDOME Core candidate that is not older
   than the exact installed baseline;
 - verifies that the Core tag resolves to the explicitly approved OCI digest;
-- requires at least one of the Supervisor or Core candidates to be newer than
-  its installed baseline, so an unchanged component is allowed but a complete
-  no-op is rejected;
+- accepts only an Operating System candidate that is not older than the exact
+  installed baseline;
+- requires at least one of Supervisor, Core or Operating System to advance, so
+  unchanged components are allowed but a complete no-op is rejected;
 - supports only the dedicated OVA/qemux86-64 (`linux/amd64`) validation build;
 - renders only the `dev` channel;
-- accepts a RAUC download URL only from releases in this repository;
+- accepts a RAUC download URL only from releases in this repository and verifies
+  the resolved bundle against the pinned ABEDOME certificate, `haos-ova`
+  compatibility and the approved candidate version;
 - regenerates the manifest from the current upstream `dev` manifest.
 
 The public page contains technical release information only: upstream manifest
 metadata, the approved ABEDOME Supervisor version, the HAOS version, and the
 approved ABEDOME Core version and repository, plus the signed RAUC download
-URL. Both approved image digests and both installed baselines are checked by the
-workflow and recorded in its summary because the upstream feed schema itself is
-tag-based. The page must never contain user, device, network, or installation
-data.
+URL. Both approved image digests and all three installed baselines are checked
+by the workflow and recorded in its summary because the upstream feed schema
+itself is tag-based. The page must never contain user, device, network, or
+installation data.
 
 `images.core` applies globally inside the update schema. Although upstream
 version keys for other machines remain present, this feed must never be
@@ -60,13 +63,15 @@ is printed or uploaded.
 
 1. Create the production RAUC signing secrets in GitHub.
 2. Publish a unique development version for every component that advances,
-   record both installed baselines, verify both approved digests, and never
+   record all three installed baselines, verify both approved digests, and never
    republish those tags.
-3. Build and validate a new signed OVA/RAUC test image.
-4. Upload the signed, versioned RAUC bundle to a GitHub Release in this repository.
-5. Run the manual feed workflow with the exact image versions and RAUC URL.
-6. Build a dedicated PVE update-test image that references this dev feed.
-7. Test update and rollback in a new PVE VM before approving any wider use.
+3. Build and validate the new signed OVA/RAUC candidate.
+4. Fresh-boot its OVA in a new PVE VM without changing the validated source VM.
+5. Upload the signed, versioned RAUC bundle to a GitHub Release in this repository.
+6. Run the manual feed workflow with the exact candidate versions, all three
+   installed baselines, both approved image digests, and the RAUC URL.
+7. Clone the validated `17.3.dev1785881843` VM and test its in-place update to
+   `18.2.dev0`, reboot and rollback before approving any wider use.
 
 GitHub Actions artifacts are deliberately not used as the update URL: they
 expire and are not a reliable public update endpoint.

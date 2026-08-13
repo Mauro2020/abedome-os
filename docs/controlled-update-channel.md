@@ -6,8 +6,9 @@ ABEDOME follows Home Assistant upstream. This repository can optionally configur
 a separate Supervisor manifest source for a deliberately approved ABEDOME test or
 release channel.
 
-The setting is **off by default**. Builds that do not set it use the unchanged
-Home Assistant update behaviour.
+The setting is enabled only by the ABEDOME OVA/qemux86-64 configuration.
+Other board configurations that do not set it retain the unchanged upstream
+update behaviour.
 
 ## Build-time configuration
 
@@ -26,7 +27,8 @@ The image repository is derived from the tagged
 At boot, both values are required before the Supervisor is started with
 `SUPERVISOR_VERSION_URL`. The preloaded image is tagged from that same
 repository, so a first boot does not need to pull from a different registry.
-It is not set in the OVA default configuration.
+It is set in the ABEDOME OVA configuration together with the matching tagged
+Supervisor image; the two values must never be configured independently.
 
 A missing, malformed, non-HTTPS, or incomplete configuration is ignored at
 boot, leaving the standard upstream behaviour in place.
@@ -47,8 +49,8 @@ Do not add a real feed URL to a distribution until all of these are true:
 6. The test OVA embeds both the feed template and the matching tagged
    preloaded Supervisor image.
 
-The first real feed must be enabled only in a dedicated test build, never by
-changing the default OVA configuration.
+The feed remains a development-only channel until the signed OVA, fresh install,
+in-place update and rollback have all been validated on Proxmox.
 
 ## Dedicated Proxmox update-test build
 
@@ -61,13 +63,16 @@ When enabled, the workflow accepts only this deliberately narrow manual scope:
 - board `ova` (x86-64);
 - channel `dev`;
 - `publish=false` and `run_tests=false`;
-- baseline OS version `17.3.dev0`;
-- preloaded Supervisor `ghcr.io/mauro2020/abedome-supervisor:2026.8.0.dev1`;
+- target OS candidate `18.2.dev0`;
+- installed upgrade source `17.3.dev1785881843` on a clone of the validated VM;
+- preloaded Supervisor `ghcr.io/mauro2020/abedome-supervisor:2026.8.0.dev4`;
 - feed template `https://mauro2020.github.io/abedome-os/updates/{channel}.json`.
 
-The resulting OVA is a lower-version, disposable baseline for one controlled
-Proxmox validation. It is not a release artifact, must not be attached to a
-normal installation, and must not be published to a stable or beta channel.
+The resulting `18.2.dev0` OVA and RAUC bundle are disposable candidates for
+controlled Proxmox validation. Use the OVA for a fresh-install test in a new VM;
+apply the RAUC bundle separately to a clone of the existing
+`17.3.dev1785881843` validation VM. They are not release artifacts and must not
+be published to a stable or beta channel.
 
 The manually generated dev manifest may replace the Supervisor version and
 image repository, and replace only `homeassistant.qemux86-64` with the approved
@@ -78,10 +83,12 @@ exclusively on the dedicated OVA/qemux86-64 test build and must not be configure
 on ARM or another machine type. The publication workflow must prove that the
 requested Supervisor and Core tags still resolve to their approved OCI digests
 immediately before deploying the feed. It also requires the exact installed
-Supervisor and Core baselines, rejects a numeric development-version regression
-in either candidate, and requires at least one candidate to advance. The
-unchanged component may match its installed baseline and is still checked
-against its approved digest.
+Supervisor, Core and Operating System baselines, rejects a numeric version
+regression in any candidate, and requires at least one candidate to advance.
+This permits a signed `17.3.dev1785881843` to `18.2.dev0` OS-only migration
+while Core and Supervisor remain fixed and digest-verified. Before deployment,
+the workflow downloads the resolved OVA RAUC bundle and verifies its ABEDOME
+signature, `haos-ova` compatibility and version.
 
 The feed schema remains tag-based and cannot pin the client directly to an OCI
 digest. ABEDOME therefore treats every approved Supervisor and Core version tag

@@ -11,15 +11,17 @@ Produrre un'immagine installabile per hardware supportato da HAOS che integri, s
 - un percorso di provisioning al primo avvio;
 - aggiornamenti upstream sottoposti ad approvazione ABEDOME.
 
-In questa fase il codice di Home Assistant OS non è stato modificato.
+La baseline HAOS registrata in `UPSTREAM.json` viene mantenuta con modifiche
+ABEDOME isolate e revisionabili, senza cambiare gli identificatori tecnici
+necessari agli aggiornamenti e alla compatibilità RAUC.
 
 ## Branch
 
 | Branch | Ruolo |
 |---|---|
 | `dev` | copia del ramo di sviluppo upstream; non contiene modifiche ABEDOME |
-| `abedome/develop` | base di integrazione ABEDOME, inizializzata dalla release HAOS `17.3` |
-| `automation/upstream-haos-release` | proposta automatica, aggiornata dalla pipeline; mai da modificare a mano |
+| `abedome/develop` | base di integrazione ABEDOME, allineata alla release HAOS registrata in `UPSTREAM.json` |
+| `automation/upstream-haos-<release>-<base-sha>` | proposta automatica immutabile; mai da modificare a mano |
 | `release/*` | immagini ABEDOME candidate o pubblicate |
 
 Le modifiche ABEDOME entrano soltanto in `abedome/develop` tramite pull request.
@@ -28,13 +30,25 @@ Le modifiche ABEDOME entrano soltanto in `abedome/develop` tramite pull request.
 
 Una pipeline settimanale cerca l'ultima release ufficiale HAOS. Quando trova una release non ancora inclusa in `abedome/develop`, aggiorna una draft PR:
 
-1. la PR confronta il tag ufficiale con il ramo ABEDOME;
-2. eseguiamo build e test dell'immagine;
-3. esaminiamo licenze, cambiamenti e conflitti;
-4. solo un'approvazione esplicita ABEDOME permette il merge;
-5. il rilascio ABEDOME viene poi creato da un branch `release/*`.
+1. la pipeline verifica il tag ufficiale e crea un merge commit sopra l'ultima base ABEDOME;
+2. esaminiamo il diff e approviamo esplicitamente l'avvio dei workflow della PR;
+3. eseguiamo build e test dell'immagine;
+4. esaminiamo licenze, cambiamenti e conflitti;
+5. solo un'approvazione esplicita ABEDOME permette il merge, usando il metodo merge commit;
+6. il rilascio ABEDOME viene poi creato da un branch `release/*`.
 
 Non esiste alcun merge automatico dall'upstream.
+
+## Branding della console
+
+ABEDOME OS personalizza i metadati di sistema, il messaggio di login, la
+console di emergenza e i metadati della macchina virtuale, conservando
+`HAOS_ID="haos"`, i nomi degli artefatti e la compatibilità `haos-ova`.
+
+Il grande logo ASCII e il prompt mostrati dalla console principale appartengono
+invece all'immagine CLI distribuita separatamente. La loro sostituzione richiede
+un fork controllato del binario CLI e del relativo container; non viene simulata
+con una sostituzione fragile dentro l'immagine OS.
 
 ## Licenze e marchi
 

@@ -7,6 +7,7 @@ output*/
 
 # Certificates
 *.pem
+!buildroot-external/ota/abedome-update-signing.pem
 
 # vscode generated files
 .vscode*

@@ -3,9 +3,9 @@
   "product": "ABEDOME OS",
   "upstream": "home-assistant/operating-system",
   "upstream_default_branch": "dev",
-  "baseline_release": "17.3",
+  "baseline_release": "18.2",
   "product_branch": "abedome/develop",
-  "strategy": "weekly-release-draft-pull-request",
+  "strategy": "weekly-verified-release-merge-draft-pull-request",
   "approval_required": true,
   "auto_merge": false,
   "first_validation_target": {

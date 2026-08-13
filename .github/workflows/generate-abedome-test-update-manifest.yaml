@@ -47,7 +47,11 @@ on:
         required: true
         type: string
       hassos_ova_version:
-        description: Exact signed OVA/RAUC version approved for the test
+        description: Signed OVA/RAUC candidate; may equal baseline when another component advances
+        required: true
+        type: string
+      hassos_ova_version_baseline:
+        description: Exact Operating System version currently installed on the validation VM
         required: true
         type: string
       ota_url_template:
@@ -132,6 +136,11 @@ jobs:
             exit 1
           fi
 
+          if [ "${CORE_IMAGE}" != "ghcr.io/mauro2020/abedome-core" ]; then
+            echo "Use the approved ABEDOME Core repository."
+            exit 2
+          fi
+
           if ! printf '%s' "${CORE_DIGEST}" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
             echo "Use an exact sha256 OCI digest."
             exit 1
@@ -156,6 +165,7 @@ jobs:
           CORE_VERSION_BASELINE: ${{ inputs.core_version_baseline }}
           CORE_IMAGE: ${{ inputs.core_image }}
           HASSOS_OVA_VERSION: ${{ inputs.hassos_ova_version }}
+          HASSOS_OVA_VERSION_BASELINE: ${{ inputs.hassos_ova_version_baseline }}
           OTA_URL_TEMPLATE: ${{ inputs.ota_url_template }}
         run: |
           python3 scripts/render_abedome_update_manifest.py \
@@ -168,6 +178,7 @@ jobs:
             --core-version-baseline "${CORE_VERSION_BASELINE}" \
             --core-image "${CORE_IMAGE}" \
             --hassos-ova-version "${HASSOS_OVA_VERSION}" \
+            --hassos-ova-version-baseline "${HASSOS_OVA_VERSION_BASELINE}" \
             --ota-url-template "${OTA_URL_TEMPLATE}"
 
       - name: Upload private test artifact
@@ -186,6 +197,8 @@ jobs:
           CORE_VERSION: ${{ inputs.core_version }}
           CORE_VERSION_BASELINE: ${{ inputs.core_version_baseline }}
           CORE_DIGEST: ${{ inputs.core_digest }}
+          HASSOS_OVA_VERSION: ${{ inputs.hassos_ova_version }}
+          HASSOS_OVA_VERSION_BASELINE: ${{ inputs.hassos_ova_version_baseline }}
         run: |
           {
             echo "## ABEDOME private test manifest"
@@ -198,4 +211,6 @@ jobs:
             echo "- Installed Core baseline: \`${CORE_VERSION_BASELINE}\`"
             echo "- Core image: \`ghcr.io/mauro2020/abedome-core\`"
             echo "- Core digest: \`${CORE_DIGEST}\`"
+            echo "- Operating System candidate: \`${HASSOS_OVA_VERSION}\`"
+            echo "- Installed Operating System baseline: \`${HASSOS_OVA_VERSION_BASELINE}\`"
           } >> "$GITHUB_STEP_SUMMARY"

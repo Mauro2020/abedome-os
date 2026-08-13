@@ -8,7 +8,7 @@ function prepare_rauc_signing() {
 
     if [ ! -f "${key}" ]; then
         echo "Generating a self-signed certificate for development"
-        "${BR2_EXTERNAL_HASSOS_PATH}"/scripts/generate-signing-key.sh "${cert}" "${key}"
+        "${BR2_EXTERNAL_HAOS_PATH}"/scripts/generate-signing-key.sh "${cert}" "${key}"
     fi
 }
 
@@ -17,33 +17,41 @@ function write_rauc_config() {
     mkdir -p "${TARGET_DIR}/etc/rauc"
 
     local ota_compatible
-    ota_compatible="$(hassos_rauc_compatible)"
+    ota_compatible="$(haos_rauc_compatible)"
 
     export ota_compatible
     export BOOTLOADER PARTITION_TABLE_TYPE BOOT_SPL
 
     (
         "${HOST_DIR}/bin/tempio" \
-            -template "${BR2_EXTERNAL_HASSOS_PATH}/ota/system.conf.gtpl"
+            -template "${BR2_EXTERNAL_HAOS_PATH}/ota/system.conf.gtpl"
     ) > "${TARGET_DIR}/etc/rauc/system.conf"
 }
 
 
 function install_rauc_certs() {
     local cert="/build/cert.pem"
+    local abedome_cert="${BR2_EXTERNAL_HAOS_PATH}/ota/abedome-update-signing.pem"
+    local keyring="${TARGET_DIR}/etc/rauc/keyring.pem"
 
     if [ "${DEPLOYMENT}" == "development" ]; then
         # Contains development and release certificate
-        cp "${BR2_EXTERNAL_HASSOS_PATH}/ota/dev-ca.pem" "${TARGET_DIR}/etc/rauc/keyring.pem"
+        cp "${BR2_EXTERNAL_HAOS_PATH}/ota/dev-ca.pem" "${keyring}"
     else
-        cp "${BR2_EXTERNAL_HASSOS_PATH}/ota/rel-ca.pem" "${TARGET_DIR}/etc/rauc/keyring.pem"
+        cp "${BR2_EXTERNAL_HAOS_PATH}/ota/rel-ca.pem" "${keyring}"
     fi
 
     # Add local self-signed certificate (if not trusted by the dev or release
     # certificate it is a self-signed certificate, dev-ca.pem contains both)
-    if ! openssl verify -CAfile "${BR2_EXTERNAL_HASSOS_PATH}/ota/dev-ca.pem" -no-CApath "${cert}"; then
+    if ! openssl verify -CAfile "${BR2_EXTERNAL_HAOS_PATH}/ota/dev-ca.pem" -no-CApath "${cert}"; then
         echo "Adding self-signed certificate to keyring."
-        openssl x509 -in "${cert}" -text >> "${TARGET_DIR}/etc/rauc/keyring.pem"
+        openssl x509 -in "${cert}" -text >> "${keyring}"
+    fi
+
+    if [ "${BOARD_ID}" == "ova" ] && \
+       ! openssl verify -CAfile "${keyring}" -no-CApath "${abedome_cert}" >/dev/null 2>&1; then
+        echo "Adding ABEDOME update certificate to OVA keyring."
+        openssl x509 -in "${abedome_cert}" -text >> "${keyring}"
     fi
 }
 
@@ -57,6 +65,6 @@ function install_bootloader_config() {
     # Fix MBR
     if [ "${PARTITION_TABLE_TYPE}" == "mbr" ]; then
         mkdir -p "${TARGET_DIR}/usr/lib/udev/rules.d"
-        cp -f "${BR2_EXTERNAL_HASSOS_PATH}/bootloader/mbr-part.rules" "${TARGET_DIR}/usr/lib/udev/rules.d/"
+        cp -f "${BR2_EXTERNAL_HAOS_PATH}/bootloader/mbr-part.rules" "${TARGET_DIR}/usr/lib/udev/rules.d/"
     fi
 }

@@ -6,8 +6,7 @@ on:
     - cron: "17 6 * * 1"
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: abedome-os-upstream-sync
@@ -15,68 +14,282 @@ concurrency:
 
 jobs:
   propose:
-    name: Propose latest HAOS release
-    runs-on: ubuntu-latest
+    name: Propose latest verified HAOS release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
 
     steps:
       - name: Check out ABEDOME integration branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: abedome/develop
           fetch-depth: 0
+          persist-credentials: true
 
-      - name: Find latest official HAOS release
+      - name: Require ancestry-preserving repository rules
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$(gh api "repos/${GITHUB_REPOSITORY}" --jq .allow_merge_commit)" != "true" ]; then
+            echo "Enable merge commits in the repository before proposing an upstream sync."
+            exit 1
+          fi
+
+          rules_file="${RUNNER_TEMP}/effective-rules.json"
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/rules/branches/abedome%2Fdevelop" \
+            > "${rules_file}"
+          if ! jq --exit-status '
+            [.[] | select(.type == "pull_request")] as $rules
+            | ($rules | length) > 0
+              and all(
+                $rules[];
+                ((.parameters.allowed_merge_methods // []) | sort) == ["merge"]
+              )
+          ' "${rules_file}" >/dev/null; then
+            echo "Every PR rule protecting abedome/develop must be merge-only."
+            exit 1
+          fi
+
+      - name: Find and verify the latest official HAOS release
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="$(gh api repos/home-assistant/operating-system/releases/latest --jq .tag_name)"
-          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+          release="$(
+            gh api repos/home-assistant/operating-system/releases/latest \
+              --jq '[.tag_name, .draft, .prerelease] | @tsv'
+          )"
+          IFS="$(printf '\t')" read -r tag draft prerelease <<EOF
+          ${release}
+          EOF
+          if [ "${draft}" != "false" ] || [ "${prerelease}" != "false" ]; then
+            echo "The selected upstream release must be final."
+            exit 1
+          fi
+          if ! printf '%s' "${tag}" | grep -Eq '^[0-9]+\.[0-9]+$'; then
+            echo "The latest upstream release tag has an unexpected format: ${tag}"
+            exit 1
+          fi
 
-      - name: Fetch and inspect official release
+          tag_ref="$(
+            gh api "repos/home-assistant/operating-system/git/ref/tags/${tag}" \
+              --jq '[.object.type, .object.sha] | @tsv'
+          )"
+          IFS="$(printf '\t')" read -r object_type tag_sha <<EOF
+          ${tag_ref}
+          EOF
+          if [ "${object_type}" != "tag" ] || [ -z "${tag_sha}" ]; then
+            echo "The official release must use an annotated signed tag."
+            exit 1
+          fi
+
+          tag_details="$(
+            gh api "repos/home-assistant/operating-system/git/tags/${tag_sha}" \
+              --jq '[.tag, .verification.verified, .verification.reason, .object.type, .object.sha] | @tsv'
+          )"
+          IFS="$(printf '\t')" read -r signed_tag verified reason target_type release_commit <<EOF
+          ${tag_details}
+          EOF
+          if [ "${signed_tag}" != "${tag}" ] || \
+             [ "${verified}" != "true" ] || \
+             [ "${reason}" != "valid" ] || \
+             [ "${target_type}" != "commit" ]; then
+            echo "The upstream tag is not an exact, valid, verified release tag."
+            exit 1
+          fi
+
+          printf 'tag=%s\n' "${tag}" >> "${GITHUB_OUTPUT}"
+          printf 'tag_sha=%s\n' "${tag_sha}" >> "${GITHUB_OUTPUT}"
+          printf 'release_commit=%s\n' "${release_commit}" >> "${GITHUB_OUTPUT}"
+
+      - name: Fetch and compare the verified official release
         id: comparison
         env:
+          RELEASE_COMMIT: ${{ steps.release.outputs.release_commit }}
           TAG: ${{ steps.release.outputs.tag }}
+          TAG_SHA: ${{ steps.release.outputs.tag_sha }}
         run: |
-          git remote add upstream https://github.com/home-assistant/operating-system.git
-          git fetch --force upstream "refs/tags/$TAG:refs/tags/upstream/$TAG"
-          release_commit="$(git rev-parse "upstream/$TAG^{commit}")"
+          base_commit="$(git rev-parse HEAD)"
+          git remote add upstream-haos https://github.com/home-assistant/operating-system.git
+          git fetch --no-tags \
+            upstream-haos \
+            "refs/tags/${TAG}:refs/tags/upstream-haos/${TAG}"
 
-          if git merge-base --is-ancestor "$release_commit" HEAD; then
-            printf 'has_update=false\n' >> "$GITHUB_OUTPUT"
+          fetched_tag_sha="$(git rev-parse "refs/tags/upstream-haos/${TAG}")"
+          fetched_commit="$(git rev-parse "refs/tags/upstream-haos/${TAG}^{commit}")"
+          if [ "${fetched_tag_sha}" != "${TAG_SHA}" ] || \
+             [ "${fetched_commit}" != "${RELEASE_COMMIT}" ]; then
+            echo "The fetched tag does not match the release verified by GitHub."
+            exit 1
+          fi
+
+          printf 'base_commit=%s\n' "${base_commit}" >> "${GITHUB_OUTPUT}"
+          printf 'proposal_branch=automation/upstream-haos-%s-%s\n' \
+            "${TAG}" "${base_commit:0:12}" >> "${GITHUB_OUTPUT}"
+          if git merge-base --is-ancestor "${RELEASE_COMMIT}" "${base_commit}"; then
+            printf 'has_update=false\n' >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
-          printf 'has_update=true\n' >> "$GITHUB_OUTPUT"
+          printf 'has_update=true\n' >> "${GITHUB_OUTPUT}"
 
-      - name: Update the draft proposal branch
+      - name: Build an immutable ancestry-preserving proposal
+        id: proposal
         if: steps.comparison.outputs.has_update == 'true'
         env:
+          BASE_COMMIT: ${{ steps.comparison.outputs.base_commit }}
+          PROPOSAL_BRANCH: ${{ steps.comparison.outputs.proposal_branch }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.release_commit }}
           TAG: ${{ steps.release.outputs.tag }}
         run: |
-          git switch --detach "upstream/$TAG"
-          git switch -C automation/upstream-haos-release
-          git push origin automation/upstream-haos-release --force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --force-create "${PROPOSAL_BRANCH}" "${BASE_COMMIT}"
+
+          trusted_metadata="${RUNNER_TEMP}/UPSTREAM.base.json"
+          expected_metadata="${RUNNER_TEMP}/UPSTREAM.expected.json"
+          git show "${BASE_COMMIT}:UPSTREAM.json" > "${trusted_metadata}"
+          if ! jq --exit-status '
+            .schema_version == 1
+            and .product == "ABEDOME OS"
+            and .upstream == "home-assistant/operating-system"
+            and .product_branch == "abedome/develop"
+            and .approval_required == true
+            and .auto_merge == false
+            and (.baseline_release | test("^[0-9]+\\.[0-9]+$"))
+          ' "${trusted_metadata}" >/dev/null; then
+            echo "The trusted ABEDOME upstream metadata is invalid."
+            exit 1
+          fi
+
+          jq --arg release "${TAG}" '
+            .baseline_release = $release
+            | .strategy = "weekly-verified-release-merge-draft-pull-request"
+          ' "${trusted_metadata}" > "${expected_metadata}"
+
+          git merge --no-ff --no-commit "${RELEASE_COMMIT}"
+          cp "${expected_metadata}" UPSTREAM.json
+          git add UPSTREAM.json
+          git commit --message "Merge verified Home Assistant OS ${TAG}"
+
+          candidate_commit="$(git rev-parse HEAD)"
+          candidate_tree="$(git rev-parse 'HEAD^{tree}')"
+          expected_parents="${BASE_COMMIT} ${RELEASE_COMMIT}"
+          if [ "$(git show -s --format=%P "${candidate_commit}")" != "${expected_parents}" ]; then
+            echo "The proposal is not the required two-parent merge commit."
+            exit 1
+          fi
+          if ! cmp --silent UPSTREAM.json "${expected_metadata}"; then
+            echo "The proposal metadata differs from the trusted expected metadata."
+            exit 1
+          fi
+
+          remote_base="$(
+            git ls-remote --heads origin refs/heads/abedome/develop | awk '{print $1}'
+          )"
+          if [ "${remote_base}" != "${BASE_COMMIT}" ]; then
+            echo "abedome/develop changed while preparing the proposal; retry the workflow."
+            exit 1
+          fi
+
+          proposal_ref="refs/heads/${PROPOSAL_BRANCH}"
+          remote_proposal="$(git ls-remote --heads origin "${proposal_ref}" | awk '{print $1}')"
+          if [ -z "${remote_proposal}" ]; then
+            git push origin "${candidate_commit}:${proposal_ref}"
+            printf 'proposal_commit=%s\n' "${candidate_commit}" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          git fetch origin \
+            "${proposal_ref}:refs/remotes/origin/${PROPOSAL_BRANCH}"
+          if [ "$(git show -s --format=%P "${remote_proposal}")" != "${expected_parents}" ] || \
+             [ "$(git show -s --format=%T "${remote_proposal}")" != "${candidate_tree}" ]; then
+            echo "The immutable proposal branch exists with unexpected content."
+            exit 1
+          fi
+          printf 'proposal_commit=%s\n' "${remote_proposal}" >> "${GITHUB_OUTPUT}"
 
       - name: Open or update the draft pull request
         if: steps.comparison.outputs.has_update == 'true'
         env:
+          BASE_COMMIT: ${{ steps.comparison.outputs.base_commit }}
+          EXPECTED_PROPOSAL: ${{ steps.proposal.outputs.proposal_commit }}
           GH_TOKEN: ${{ github.token }}
+          PROPOSAL_BRANCH: ${{ steps.comparison.outputs.proposal_branch }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.release_commit }}
           TAG: ${{ steps.release.outputs.tag }}
+          TAG_SHA: ${{ steps.release.outputs.tag_sha }}
         run: |
-          body="## Upstream candidate
+          remote_base="$(
+            git ls-remote --heads origin refs/heads/abedome/develop | awk '{print $1}'
+          )"
+          if [ "${remote_base}" != "${BASE_COMMIT}" ]; then
+            echo "abedome/develop changed before PR creation; retry the workflow."
+            exit 1
+          fi
+          remote_proposal="$(
+            git ls-remote --heads origin "refs/heads/${PROPOSAL_BRANCH}" | awk '{print $1}'
+          )"
+          if [ "${remote_proposal}" != "${EXPECTED_PROPOSAL}" ]; then
+            echo "The immutable proposal changed before PR creation."
+            exit 1
+          fi
 
-          - Source: `home-assistant/operating-system`
-          - Official release: `$TAG`
-          - Target: `abedome/develop`
+          body_file="${RUNNER_TEMP}/upstream-proposal.md"
+          {
+            printf '%s\n' \
+              '## Upstream candidate' \
+              '' \
+              '- Source: `home-assistant/operating-system`'
+            printf -- '- Official verified release: `%s`\n' "${TAG}"
+            printf -- '- Verified tag object: `%s`\n' "${TAG_SHA}"
+            printf -- '- Upstream commit: `%s`\n' "${RELEASE_COMMIT}"
+            printf -- '- ABEDOME base: `%s`\n' "${BASE_COMMIT}"
+            printf '%s\n' \
+              '- Target: `abedome/develop`' \
+              '- Required merge method: **merge commit** (never squash or rebase)' \
+              '' \
+              'This draft must not be merged until ABEDOME has completed conflict resolution, build, security review, fresh-install and in-place-update tests, rollback validation, and explicit approval.' \
+              '' \
+              'GitHub queues the pull-request workflows for explicit maintainer approval. Review the candidate before selecting **Approve workflows to run**.'
+          } > "${body_file}"
 
-          This PR is created automatically and must not be merged until ABEDOME has completed build, test, security review and explicit approval."
+          prs_file="${RUNNER_TEMP}/proposal-prs.json"
+          gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/pulls" \
+            -f state=open \
+            -f base=abedome/develop \
+            -f head="${GITHUB_REPOSITORY_OWNER}:${PROPOSAL_BRANCH}" \
+            > "${prs_file}"
+          if [ "$(jq 'length' "${prs_file}")" -gt 1 ]; then
+            echo "Multiple open pull requests match the immutable proposal branch."
+            exit 1
+          fi
 
-          existing="$(gh pr list             --base abedome/develop             --head automation/upstream-haos-release             --state open             --json number             --jq '.[0].number')"
+          existing="$(jq -r '.[0].number // empty' "${prs_file}")"
+          if [ -n "${existing}" ] && ! jq --exit-status \
+            --arg head "${EXPECTED_PROPOSAL}" \
+            --arg base "${BASE_COMMIT}" '
+              .[0].head.sha == $head
+              and .[0].base.sha == $base
+              and .[0].draft == true
+            ' "${prs_file}" >/dev/null; then
+            echo "The existing proposal PR has unexpected head, base, or draft state."
+            exit 1
+          fi
+          title="chore(upstream): propose Home Assistant OS ${TAG}"
 
-          if [ -n "$existing" ]; then
-            gh pr edit "$existing"               --title "chore(upstream): propose Home Assistant OS $TAG"               --body "$body"
+          if [ -n "${existing}" ]; then
+            gh pr edit "${existing}" --title "${title}" --body-file "${body_file}"
             exit 0
           fi
 
-          gh pr create             --base abedome/develop             --head automation/upstream-haos-release             --draft             --title "chore(upstream): propose Home Assistant OS $TAG"             --body "$body"
+          gh pr create \
+            --base abedome/develop \
+            --head "${PROPOSAL_BRANCH}" \
+            --draft \
+            --title "${title}" \
+            --body-file "${body_file}"

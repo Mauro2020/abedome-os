@@ -16,7 +16,7 @@ the validation VM. The renderer compares numeric version components and refuses
 to generate or publish a manifest if any candidate is older than its installed
 baseline. Components may remain at their exact baselines, but at least one of
 Supervisor, Core or Operating System must advance, so a complete no-op is also
-refused. This permits the signed `17.3.dev1785881843` to `18.2.dev0` OS-only
+refused. This permits the signed `17.3.dev1785881843` to `18.2.dev1` OS-only
 migration without republishing Core or Supervisor.
 
 A separate manual workflow, `Publish ABEDOME dev test update feed`, may deploy

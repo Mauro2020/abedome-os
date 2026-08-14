@@ -7,7 +7,10 @@ channel=$3
 docker_version=$4
 supervisor_version_url=$5
 preloaded_supervisor_image=$6
+preloaded_core_image=${7:-}
 preloaded_supervisor_repository=""
+preloaded_core_repository=""
+preloaded_core_version=""
 
 # A controlled feed can only update the same approved image source that the
 # build preloaded. This prevents an update from falling back to another registry.
@@ -19,7 +22,31 @@ if [ -n "${supervisor_version_url}" ]; then
     preloaded_supervisor_repository="${preloaded_supervisor_image%:*}"
     printf '%s\n' "${preloaded_supervisor_repository}" > "${build_dir}/supervisor-image-repository"
 else
-    rm -f "${build_dir}/supervisor-image-repository"
+	rm -f "${build_dir}/supervisor-image-repository"
+fi
+
+if [ -n "${preloaded_core_image}" ]; then
+	if [[ "${preloaded_core_image}" == *@* ]] || \
+	   [[ "${preloaded_core_image}" =~ [[:space:]] ]] || \
+	   [ "${preloaded_core_image}" = "${preloaded_core_image%:*}" ]; then
+		echo "The preloaded Core image must be a tagged OCI reference, not a digest." >&2
+		exit 1
+	fi
+	preloaded_core_repository="${preloaded_core_image%:*}"
+	preloaded_core_version="${preloaded_core_image##*:}"
+	if [ -z "${preloaded_core_repository}" ] || [ -z "${preloaded_core_version}" ] || \
+	   [[ "${preloaded_core_version}" == */* ]]; then
+		echo "The preloaded Core image repository or version tag is invalid." >&2
+		exit 1
+	fi
+	printf '%s\n' "${preloaded_core_image}" > "${build_dir}/core-image-reference"
+else
+	rm -f "${build_dir}/core-image-reference"
+fi
+
+if [ -n "${supervisor_version_url}" ] && [ -z "${preloaded_core_image}" ]; then
+	echo "A controlled update feed requires a tagged preloaded managed Core image." >&2
+	exit 1
 fi
 
 data_img="${dst_dir}/data.ext4"
@@ -27,16 +54,23 @@ data_dir="${build_dir}/data"
 
 APPARMOR_URL="https://version.home-assistant.io/apparmor_${channel}.txt"
 
+# A full managed Core image needs more temporary Docker snapshot space than the
+# lightweight upstream landing page. resize2fs minimizes the final artifact.
+data_image_size="1280M"
+if [ -n "${preloaded_core_image}" ]; then
+	data_image_size="4096M"
+fi
+
 # Make image
 rm -f "${data_img}"
-truncate --size="1280M" "${data_img}"
+truncate --size="${data_image_size}" "${data_img}"
 mkfs.ext4 -L "hassos-data" -E lazy_itable_init=0,lazy_journal_init=0 "${data_img}"
 
 # Mount / init file structs
 mkdir -p "${data_dir}"
 sudo mount -o loop,discard "${data_img}" "${data_dir}"
 
-trap 'docker rm -f ${container} > /dev/null; sudo umount ${data_dir} || true' ERR EXIT
+trap 'docker rm -f "${container:-}" > /dev/null 2>&1 || true; sudo umount "${data_dir}" || true' ERR EXIT
 
 # Use official Docker in Docker images
 # We use the same version as Buildroot is using to ensure best compatibility
@@ -55,18 +89,30 @@ touch "${data_dir}/.docker-use-containerd-snapshotter"
 mkdir -p "${data_dir}/supervisor/apparmor"
 curl -fsL -o "${data_dir}/supervisor/apparmor/hassio-supervisor" "${APPARMOR_URL}"
 
-# Persist build-time updater channel
-jq -n --arg channel "${channel}" '{"channel": \$channel}' > "${data_dir}/supervisor/updater.json"
-
-# An optional ABEDOME update feed is written only when explicitly configured.
-# Empty remains the upstream default and does not create this file.
-if [ -n "${supervisor_version_url}" ]; then
-    jq -n --arg url "${supervisor_version_url}" --arg image "${preloaded_supervisor_repository}" '{"url": \$url, "image": \$image}' > "${data_dir}/supervisor/update-feed.json"
-fi
+# Persist the updater channel and, when configured, the managed Core repository
+# and version needed for a first boot without registry or feed access.
+bash "${build_dir}/write-supervisor-state.sh" \
+    "${data_dir}" \
+    "${channel}" \
+    "${supervisor_version_url}" \
+    "${preloaded_supervisor_repository}" \
+    "${preloaded_core_repository}" \
+    "${preloaded_core_version}"
 EOF
 
 # Tear down docker and unmount the data partition before shrinking
 docker rm -f "${container}" > /dev/null
+trap 'sudo umount "${data_dir}" || true' ERR EXIT
+
+if [ -n "${preloaded_core_image}" ]; then
+	available_bytes=$(df --output=avail -B1 "${data_dir}" | awk 'NR == 2 { print $1 }')
+	minimum_free_bytes=$((256 * 1024 * 1024))
+	if [ "${available_bytes}" -lt "${minimum_free_bytes}" ]; then
+		echo "The preloaded data partition has less than 256 MiB free before shrinking." >&2
+		exit 1
+	fi
+fi
+
 sudo umount "${data_dir}"
 trap - ERR EXIT
 

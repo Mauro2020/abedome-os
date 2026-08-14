@@ -83,3 +83,34 @@ def test_ha_runs_offline(shell):
 
     web_index = shell.run_check("curl http://localhost:8123")
     assert "</html>" in " ".join(web_index)
+
+    configured_update_feed = "".join(
+        shell.run_check(
+            "jq -r '.url // empty' /mnt/data/supervisor/update-feed.json 2>/dev/null || true"
+        )
+    )
+    if configured_update_feed == (
+        "https://mauro2020.github.io/abedome-os/updates/{channel}.json"
+    ):
+        managed_core_repository = "".join(
+            shell.run_check(
+                "jq -r '.image // empty' /mnt/data/supervisor/homeassistant.json"
+            )
+        )
+        assert managed_core_repository == "ghcr.io/mauro2020/abedome-core"
+        managed_core_version = "".join(
+            shell.run_check(
+                "jq -r '.version // empty' /mnt/data/supervisor/homeassistant.json"
+            )
+        )
+        running_core_image = "".join(
+            shell.run_check("docker inspect --format '{{.Config.Image}}' homeassistant")
+        )
+        assert running_core_image == f"{managed_core_repository}:{managed_core_version}"
+        assert "false" in shell.run_check(
+            "jq -r '.override_image' /mnt/data/supervisor/homeassistant.json"
+        )
+        assert "absent" in shell.run_check(
+            "docker image inspect ghcr.io/home-assistant/qemux86-64-homeassistant:landingpage "
+            ">/dev/null 2>&1 && echo present || echo absent"
+        )

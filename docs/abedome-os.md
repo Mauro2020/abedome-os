@@ -61,6 +61,6 @@ Il fork mantiene tutti i file di licenza, copyright e notice presenti nell'upstr
 - Core, Supervisor e Frontend sono fork separati e versionati quando contengono
   modifiche ABEDOME; ogni sostituzione entra soltanto nel canale `dev` dopo CI e
   approvazione esplicita;
-- il feed Core ABEDOME di questa fase è limitato alla build di validazione
-  OVA/qemux86-64; non è un feed multiarchitettura;
+- il preload e il feed Core ABEDOME di questa fase sono limitati alla build di
+  validazione OVA/qemux86-64; non sono un percorso multiarchitettura;
 - supportiamo soltanto hardware già supportato da HAOS fino a una decisione separata.

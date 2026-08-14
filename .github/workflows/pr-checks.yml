@@ -36,6 +36,9 @@ jobs:
     - name: Check ABEDOME OS branding contract
       run: scripts/check-abedome-os-branding.sh
 
+    - name: Check ABEDOME OVA Core preload contract
+      run: scripts/check-abedome-core-preload.sh
+
     - name: Check buildroot-external packages
       run: |
         buildroot/utils/check-package --exclude PackageHeader --exclude Upstream --br2-external buildroot-external/package/*/*

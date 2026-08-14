@@ -39,6 +39,9 @@ on:
 
 env:
   PYTHON_VERSION: "3.13"
+  ABEDOME_PRELOADED_CORE_IMAGE: ghcr.io/mauro2020/abedome-core:2026.9.1.dev6
+  ABEDOME_PRELOADED_CORE_DIGEST: sha256:c31d9b4d1e79cd1263d3142a33f4f39becd231a20dd0bf38c087496d871ebd63
+  ABEDOME_PRELOADED_CORE_AMD64_DIGEST: sha256:2fb19a4c2be9f5d09d0f78c9b757fca9999243c8d8a49cf1a61a6bd52fad1b10
 
 jobs:
   prepare:
@@ -101,7 +104,7 @@ jobs:
           CHANNEL: ${{ inputs.hassio_channel }}
           PUBLISH: ${{ inputs.publish }}
           RUN_TESTS: ${{ inputs.run_tests }}
-          BASELINE_SUFFIX: dev0
+          CANDIDATE_SUFFIX: dev1
         run: |
           if [ "${GITHUB_REF}" != "refs/heads/abedome/develop" ]; then
             echo "::error::The ABEDOME update-test build may only run from abedome/develop."
@@ -119,9 +122,9 @@ jobs:
             echo "::error::The ABEDOME update-test build requires publish=false and run_tests=false."
             exit 1
           fi
-          echo "version_dev=${BASELINE_SUFFIX}" >> "${GITHUB_OUTPUT}"
+          echo "version_dev=${CANDIDATE_SUFFIX}" >> "${GITHUB_OUTPUT}"
           . buildroot-external/meta
-          echo "Using isolated ABEDOME update-test baseline version ${VERSION_MAJOR}.${VERSION_MINOR}.${BASELINE_SUFFIX}."
+          echo "Using isolated ABEDOME update-test candidate version ${VERSION_MAJOR}.${VERSION_MINOR}.${CANDIDATE_SUFFIX}."
 
       - name: Set version suffix
         if: ${{ github.event_name != 'release' }}
@@ -252,6 +255,30 @@ jobs:
             registry: ghcr.io
             username: ${{ github.repository_owner }}
             password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify approved ABEDOME Core preload
+        if: ${{ github.repository == 'Mauro2020/abedome-os' }}
+        env:
+          CORE_IMAGE: ${{ env.ABEDOME_PRELOADED_CORE_IMAGE }}
+          CORE_DIGEST: ${{ env.ABEDOME_PRELOADED_CORE_DIGEST }}
+          CORE_AMD64_DIGEST: ${{ env.ABEDOME_PRELOADED_CORE_AMD64_DIGEST }}
+        run: |
+          resolved_digest="$(
+            docker buildx imagetools inspect "${CORE_IMAGE}" \
+              | awk '$1 == "Digest:" && digest == "" { digest = $2 } END { print digest }'
+          )"
+          if [[ "${resolved_digest}" != "${CORE_DIGEST}" ]]; then
+            echo "::error::ABEDOME Core ${CORE_IMAGE} resolved to ${resolved_digest}, expected ${CORE_DIGEST}."
+            exit 1
+          fi
+
+          raw_index="$(docker buildx imagetools inspect --raw "${CORE_IMAGE}")"
+          if ! jq -e \
+            --arg digest "${CORE_AMD64_DIGEST}" \
+            'any(.manifests[]?; .digest == $digest and .platform.os == "linux" and .platform.architecture == "amd64")' \
+            <<< "${raw_index}" > /dev/null; then
+            echo "::error::The approved linux/amd64 Core manifest was not found in ${CORE_IMAGE}."
+            exit 1
+          fi
       - name: Prepare and validate RAUC signing material
         env:
           RAUC_CERTIFICATE: ${{ secrets.RAUC_CERTIFICATE }}
@@ -401,7 +428,26 @@ jobs:
         with:
           image: ${{ needs.prepare.outputs.build_container_image }}
           command: |
-            bash -ec 'grep -Fxq "BR2_PACKAGE_HASSIO_SUPERVISOR_IMAGE=\"ghcr.io/mauro2020/abedome-supervisor:2026.8.0.dev4\"" /build/output/.config && grep -Fxq "BR2_PACKAGE_HASSIO_SUPERVISOR_VERSION_URL=\"https://mauro2020.github.io/abedome-os/updates/{channel}.json\"" /build/output/.config'
+            bash -ec 'grep -Fxq "BR2_PACKAGE_HASSIO_SUPERVISOR_IMAGE=\"ghcr.io/mauro2020/abedome-supervisor:2026.8.0.dev4\"" /build/output/.config && grep -Fxq "BR2_PACKAGE_HASSIO_CORE_IMAGE=\"${{ env.ABEDOME_PRELOADED_CORE_IMAGE }}\"" /build/output/.config && grep -Fxq "BR2_PACKAGE_HASSIO_SUPERVISOR_VERSION_URL=\"https://mauro2020.github.io/abedome-os/updates/{channel}.json\"" /build/output/.config'
+
+      - name: Verify configured ABEDOME Core platform image
+        if: ${{ matrix.board.id == 'ova' && github.repository == 'Mauro2020/abedome-os' }}
+        uses: "./.github/actions/haos-builder-command"
+        with:
+          image: ${{ needs.prepare.outputs.build_container_image }}
+          command: |
+            bash -ec '
+              core_image="${{ env.ABEDOME_PRELOADED_CORE_IMAGE }}"
+              expected_digest="${{ env.ABEDOME_PRELOADED_CORE_DIGEST }}"
+              expected_version="${core_image##*:}"
+              inspect="$(skopeo inspect --override-arch amd64 "docker://${core_image}")"
+              test "$(jq -r ".Digest" <<< "${inspect}")" = "${expected_digest}"
+              test "$(jq -r ".Architecture" <<< "${inspect}")" = "amd64"
+              test "$(jq -r ".Os" <<< "${inspect}")" = "linux"
+              test "$(jq -r ".Labels[\"io.hass.arch\"]" <<< "${inspect}")" = "amd64"
+              test "$(jq -r ".Labels[\"io.hass.type\"]" <<< "${inspect}")" = "core"
+              test "$(jq -r ".Labels[\"io.hass.version\"]" <<< "${inspect}")" = "${expected_version}"
+            '
 
       - name: Override release channel
         if: ${{ needs.prepare.outputs.hassio_channel_option != 'BR2_PACKAGE_HASSIO_CHANNEL_STABLE' }}
@@ -416,6 +462,17 @@ jobs:
         with:
           image: ${{ needs.prepare.outputs.build_container_image }}
           command: make
+
+      - name: Verify embedded ABEDOME Core preload
+        if: ${{ matrix.board.id == 'ova' && github.repository == 'Mauro2020/abedome-os' }}
+        uses: "./.github/actions/haos-builder-command"
+        with:
+          image: ${{ needs.prepare.outputs.build_container_image }}
+          command: |
+            bash scripts/check-abedome-ova-build.sh \
+              /build/output \
+              "${{ env.ABEDOME_PRELOADED_CORE_IMAGE }}" \
+              "${{ env.ABEDOME_PRELOADED_CORE_DIGEST }}"
 
       - name: Check Linux config
         uses: "./.github/actions/haos-builder-command"
@@ -468,9 +525,20 @@ jobs:
           echo "| Container | Version |" >> $GITHUB_STEP_SUMMARY
           echo "|:-|:-|" >> $GITHUB_STEP_SUMMARY
           supervisor_version=$(jq -r ".supervisor" output/build/hassio-*/version.json)
-          landingpage_version=$(curl -fsSL https://api.github.com/repos/home-assistant/landingpage/releases/latest | jq -r '.tag_name')
-          echo "| supervisor | [${supervisor_version}](https://github.com/home-assistant/supervisor/releases/tag/${supervisor_version}) |" >> $GITHUB_STEP_SUMMARY
-          echo "| landingpage | [${landingpage_version}](https://github.com/home-assistant/landingpage/releases/tag/${landingpage_version}) |" >> $GITHUB_STEP_SUMMARY
+          supervisor_repository=$(jq -r ".images.supervisor" output/build/hassio-*/version.json)
+          if [[ "${supervisor_repository}" == ghcr.io/home-assistant/* ]]; then
+            echo "| supervisor | [${supervisor_version}](https://github.com/home-assistant/supervisor/releases/tag/${supervisor_version}) |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| supervisor | \`${supervisor_repository}:${supervisor_version}\` |" >> $GITHUB_STEP_SUMMARY
+          fi
+          core_repository=$(jq -r ".images.core" output/build/hassio-*/version.json)
+          core_version=$(jq -r ".core" output/build/hassio-*/version.json)
+          if [ "${core_version}" = "landingpage" ]; then
+            landingpage_version=$(curl -fsSL https://api.github.com/repos/home-assistant/landingpage/releases/latest | jq -r '.tag_name')
+            echo "| landingpage | [${landingpage_version}](https://github.com/home-assistant/landingpage/releases/tag/${landingpage_version}) |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| managed Core | \`${core_repository}:${core_version}\` |" >> $GITHUB_STEP_SUMMARY
+          fi
           for plugin in dns audio cli multicast observer; do
             version=$(jq -r ".${plugin}" output/build/hassio-*/version.json)
             echo "| plugin-${plugin} | [${version}](https://github.com/home-assistant/plugin-${plugin}/releases/tag/${version}) |" >> $GITHUB_STEP_SUMMARY

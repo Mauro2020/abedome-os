@@ -95,6 +95,8 @@ mkdir -p "${fake_package}/images" "${fake_output}/images" "${temporary_dir}/bin"
 cp "${temporary_dir}/configured.json" "${fake_package}/version.json"
 touch "${fake_package}/images/${fake_archive}" "${fake_output}/images/data.ext4"
 
+# These strings must expand in the generated debugfs stub, not in this script.
+# shellcheck disable=SC2016
 printf '%s\n' \
 	'#!/usr/bin/env bash' \
 	'set -euo pipefail' \

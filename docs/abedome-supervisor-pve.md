@@ -1,34 +1,47 @@
-# ABEDOME Supervisor PVE test integration
+# ABEDOME OVA integration for Proxmox
 
-The x86-64 OVA test build preloads this approved Supervisor image:
+The x86-64 OVA validation build preloads the approved managed images:
 
 ```text
-ghcr.io/mauro2020/abedome-supervisor:pve-e6a5f6fa3cc8
+ghcr.io/mauro2020/abedome-supervisor:2026.8.0.dev4
+ghcr.io/mauro2020/abedome-core:2026.9.1.dev6
 ```
 
-The Home Assistant OS build resolves the tag to an OCI digest before importing it into
-the image. The reference is configured only in
-`buildroot-external/configs/ova_defconfig`.
+It also persists the ABEDOME development feed template:
 
-## Scope of this test
+```text
+https://mauro2020.github.io/abedome-os/updates/{channel}.json
+```
 
-- The initial Supervisor container is ABEDOME's validated PVE test image.
-- Home Assistant Core, add-ons, OS components, and the release manifest remain
-  upstream Home Assistant components.
-- The Supervisor has no configured ABEDOME update-feed URL, so it keeps its
-  upstream update behaviour.
-- This does not enable OTA publishing, custom update manifests, or production
-  signing.
+These settings exist only in `buildroot-external/configs/ova_defconfig`. Other
+boards keep the upstream landing-page and update-source behaviour.
 
-## Changing the image
+## Fresh-boot contract
 
-A replacement reference must be introduced in a separate pull request and only
-after its image has been built and validated by the
-`Publish ABEDOME Supervisor PVE image` workflow. The reference must include a
-tag and be anonymously readable by the OS build container.
+The build resolves and downloads the approved linux/amd64 Core image, imports
+it into the data partition, and seeds the matching managed Core repository and
+version with `override_image=false`. The first boot must therefore start the
+ABEDOME Core directly, including when the update feed and registry are not yet
+reachable. It must never preload or start
+`ghcr.io/home-assistant/qemux86-64-homeassistant:landingpage`.
 
-## PVE validation
+Candidate CI verifies the approved OCI index and platform digests before the
+build and verifies the incorporated archive and persisted JSON after the
+build. The Supervisor and Core version tags are append-only and must not be
+republished.
 
-Build only the `ova` board with tests enabled, import the resulting QCOW2 into
-a new Proxmox VM, and complete onboarding. Do not reuse the existing baseline VM
-for this test.
+## Changing an image
+
+A replacement Supervisor or Core reference requires its own published,
+immutable development version and reviewed digest. Update the OVA pin, its
+workflow digest contract and the feed only through separate reviewed changes.
+Do not point a validation OVA at a floating `latest` or `landingpage` alias.
+
+## Proxmox validation
+
+Import the QCOW2 into a new VM on `nvme_storage`. Validate the first boot once
+with networking unavailable and once online. In both cases confirm the running
+Core image and the persisted Core state, then restart the Supervisor and the
+host. The logs must contain no pull, attach or fallback to the upstream
+`qemux86-64-homeassistant` repository. Do not reuse or overwrite the validated
+migration VM for this fresh-install test.

@@ -68,10 +68,24 @@ def test_start_supervisor(shell, shell_json):
                 if not core_install_started:
                     logger.info("Home Assistant Core install job detected, waiting for completion...")
                     core_install_started = True
-            elif core_install_started:
-                # started and not installing anymore means finished
-                logger.info("Home Assistant Core install/start complete")
-                break
+            else:
+                core_info = shell_json("ha core info --no-progress --raw-json")
+                core_data = core_info.get("data", {})
+                core_version = core_data.get("version")
+                if (
+                    core_info.get("result") == "ok"
+                    and core_version
+                    and core_version != "landingpage"
+                    and check_container_running("homeassistant")
+                ):
+                    if core_install_started:
+                        logger.info("Home Assistant Core install/start complete")
+                    else:
+                        logger.info(
+                            "Preloaded Home Assistant Core %s is already running",
+                            core_version,
+                        )
+                    break
         except ExecutionError:
             pass  # avoid failure when the supervisor/CLI is restarting
 

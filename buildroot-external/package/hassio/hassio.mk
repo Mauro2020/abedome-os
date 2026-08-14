@@ -20,12 +20,13 @@ endif
 
 HASSIO_SUPERVISOR_IMAGE = $(call qstrip,$(BR2_PACKAGE_HASSIO_SUPERVISOR_IMAGE))
 HASSIO_SUPERVISOR_VERSION_URL = $(call qstrip,$(BR2_PACKAGE_HASSIO_SUPERVISOR_VERSION_URL))
+HASSIO_CORE_IMAGE = $(call qstrip,$(BR2_PACKAGE_HASSIO_CORE_IMAGE))
 HASSIO_CONTAINER_IMAGES_ARCH = supervisor dns audio cli multicast observer core
 
 define HASSIO_CONFIGURE_CMDS
-	# Deploy only landing page for "core" by setting version to "landingpage".
-	# Optionally preload an approved Supervisor image for a test build.
-	curl -fsSL $(HASSIO_VERSION_URL)$(HASSIO_VERSION_CHANNEL)".json" | jq --arg supervisor_image "$(HASSIO_SUPERVISOR_IMAGE)" '.core = "landingpage" | if $$supervisor_image == "" then . else ($$supervisor_image | capture("^(?<name>.+):(?<tag>[^:]+)$$")) as $$reference | .images.supervisor = $$reference.name | .supervisor = $$reference.tag end' > $(@D)/version.json
+	# Keep the upstream landing page unless a board explicitly pins a managed Core.
+	# This recipe deliberately remains on one line for Buildroot's command filter.
+	curl -fsSL $(HASSIO_VERSION_URL)$(HASSIO_VERSION_CHANNEL)".json" | bash $(BR2_EXTERNAL_HAOS_PATH)/package/hassio/configure-version.sh "$(HASSIO_SUPERVISOR_IMAGE)" "$(HASSIO_CORE_IMAGE)" > $(@D)/version.json
 endef
 
 define HASSIO_BUILD_CMDS
@@ -40,7 +41,7 @@ endef
 HASSIO_INSTALL_IMAGES = YES
 
 define HASSIO_INSTALL_IMAGES_CMDS
-	$(BR2_EXTERNAL_HAOS_PATH)/package/hassio/create-data-partition.sh "$(@D)" "$(BINARIES_DIR)" "$(HASSIO_VERSION_CHANNEL)" "$(DOCKER_ENGINE_VERSION)" "$(HASSIO_SUPERVISOR_VERSION_URL)" "$(HASSIO_SUPERVISOR_IMAGE)"
+	$(BR2_EXTERNAL_HAOS_PATH)/package/hassio/create-data-partition.sh "$(@D)" "$(BINARIES_DIR)" "$(HASSIO_VERSION_CHANNEL)" "$(DOCKER_ENGINE_VERSION)" "$(HASSIO_SUPERVISOR_VERSION_URL)" "$(HASSIO_SUPERVISOR_IMAGE)" "$(HASSIO_CORE_IMAGE)"
 endef
 
 $(eval $(generic-package))

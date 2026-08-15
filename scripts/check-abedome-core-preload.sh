@@ -25,7 +25,13 @@ grep -Fxq "  ABEDOME_PRELOADED_CORE_DIGEST: ${core_index_digest}" \
 	.github/workflows/build.yaml
 grep -Fxq "  ABEDOME_PRELOADED_CORE_AMD64_DIGEST: ${core_amd64_digest}" \
 	.github/workflows/build.yaml
-grep -Fxq '          CANDIDATE_SUFFIX: dev1' .github/workflows/build.yaml
+grep -Fxq '          CANDIDATE_SUFFIX: dev2' .github/workflows/build.yaml
+grep -Fxq 'data_image_size="1280M"' \
+	buildroot-external/package/hassio/create-data-partition.sh
+grep -Fxq '	data_image_size="6144M"' \
+	buildroot-external/package/hassio/create-data-partition.sh
+grep -Fxq '	minimum_free_mib=256' \
+	buildroot-external/package/hassio/create-data-partition.sh
 
 temporary_dir=$(mktemp -d)
 trap 'rm -rf "${temporary_dir}"' EXIT

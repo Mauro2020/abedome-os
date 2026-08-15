@@ -104,7 +104,7 @@ jobs:
           CHANNEL: ${{ inputs.hassio_channel }}
           PUBLISH: ${{ inputs.publish }}
           RUN_TESTS: ${{ inputs.run_tests }}
-          CANDIDATE_SUFFIX: dev1
+          CANDIDATE_SUFFIX: dev2
         run: |
           if [ "${GITHUB_REF}" != "refs/heads/abedome/develop" ]; then
             echo "::error::The ABEDOME update-test build may only run from abedome/develop."

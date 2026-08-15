@@ -55,10 +55,11 @@ data_dir="${build_dir}/data"
 APPARMOR_URL="https://version.home-assistant.io/apparmor_${channel}.txt"
 
 # A full managed Core image needs more temporary Docker snapshot space than the
-# lightweight upstream landing page. resize2fs minimizes the final artifact.
+# lightweight upstream landing page. The 4 GiB candidate exhausted the guarded
+# free-space margin; resize2fs minimizes the larger staging image afterward.
 data_image_size="1280M"
 if [ -n "${preloaded_core_image}" ]; then
-	data_image_size="4096M"
+	data_image_size="6144M"
 fi
 
 # Make image
@@ -106,11 +107,14 @@ trap 'sudo umount "${data_dir}" || true' ERR EXIT
 
 if [ -n "${preloaded_core_image}" ]; then
 	available_bytes=$(df --output=avail -B1 "${data_dir}" | awk 'NR == 2 { print $1 }')
-	minimum_free_bytes=$((256 * 1024 * 1024))
+	minimum_free_mib=256
+	minimum_free_bytes=$((minimum_free_mib * 1024 * 1024))
+	available_mib=$((available_bytes / 1024 / 1024))
 	if [ "${available_bytes}" -lt "${minimum_free_bytes}" ]; then
-		echo "The preloaded data partition has less than 256 MiB free before shrinking." >&2
+		echo "The preloaded data partition has ${available_mib} MiB free before shrinking; at least ${minimum_free_mib} MiB is required." >&2
 		exit 1
 	fi
+	echo "The preloaded data partition has ${available_mib} MiB free before shrinking (minimum ${minimum_free_mib} MiB)."
 fi
 
 sudo umount "${data_dir}"

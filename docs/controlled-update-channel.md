@@ -73,12 +73,12 @@ When enabled, the workflow accepts only this deliberately narrow manual scope:
 - board `ova` (x86-64);
 - channel `dev`;
 - `publish=false` and `run_tests=false`;
-- target OS candidate `18.2.dev2` (the earlier `18.2.dev0` fresh-image
-  candidate and failed `18.2.dev1` preload build remain immutable and are not
-  rebuilt);
+- target OS candidate `18.2.dev3` (the earlier `18.2.dev0` fresh-image
+  candidate, failed `18.2.dev1` preload build, and validated `18.2.dev2`
+  preload candidate remain immutable and are not rebuilt);
 - installed upgrade source `17.3.dev1785881843` on a clone of the validated VM;
 - preloaded Supervisor `ghcr.io/mauro2020/abedome-supervisor:2026.8.0.dev4`;
-- preloaded managed Core `ghcr.io/mauro2020/abedome-core:2026.9.1.dev6`;
+- preloaded managed Core `ghcr.io/mauro2020/abedome-core:2026.9.1.dev7`;
 - feed template `https://mauro2020.github.io/abedome-os/updates/{channel}.json`.
 
 Candidate CI verifies the Core tag against the approved OCI index and
@@ -88,7 +88,7 @@ and the absence of an upstream `qemux86-64-homeassistant` archive. This second
 check prevents a tag move between the registry preflight and the image fetch
 from entering an artifact unnoticed.
 
-The resulting `18.2.dev2` OVA and RAUC bundle are disposable candidates for
+The resulting `18.2.dev3` OVA and RAUC bundle are disposable candidates for
 controlled Proxmox validation. Use the OVA for a fresh-install test in a new VM;
 apply the RAUC bundle separately to a clone of the existing
 `17.3.dev1785881843` validation VM. They are not release artifacts and must not
@@ -105,10 +105,11 @@ requested Supervisor and Core tags still resolve to their approved OCI digests
 immediately before deploying the feed. It also requires the exact installed
 Supervisor, Core and Operating System baselines, rejects a numeric version
 regression in any candidate, and requires at least one candidate to advance.
-This permits a signed `17.3.dev1785881843` to `18.2.dev2` OS-only migration
-while Core and Supervisor remain fixed and digest-verified. Before deployment,
-the workflow downloads the resolved OVA RAUC bundle and verifies its ABEDOME
-signature, `haos-ova` compatibility and version.
+This candidate advances the OS from `17.3.dev1785881843` to `18.2.dev3` and
+Core from `2026.9.1.dev6` to `2026.9.1.dev7`, while Supervisor remains at
+`2026.8.0.dev4`; both managed image tags are digest-verified. Before
+deployment, the workflow downloads the resolved OVA RAUC bundle and verifies
+its ABEDOME signature, `haos-ova` compatibility and version.
 
 The feed schema remains tag-based and cannot pin the client directly to an OCI
 digest. ABEDOME therefore treats every approved Supervisor and Core version tag

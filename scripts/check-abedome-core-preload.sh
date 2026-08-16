@@ -4,11 +4,11 @@ set -euo pipefail
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repository_root}"
 
-core_image="ghcr.io/mauro2020/abedome-core:2026.9.1.dev6"
+core_image="ghcr.io/mauro2020/abedome-core:2026.9.1.dev7"
 core_repository=${core_image%:*}
 core_version=${core_image##*:}
-core_index_digest="sha256:c31d9b4d1e79cd1263d3142a33f4f39becd231a20dd0bf38c087496d871ebd63"
-core_amd64_digest="sha256:2fb19a4c2be9f5d09d0f78c9b757fca9999243c8d8a49cf1a61a6bd52fad1b10"
+core_index_digest="sha256:a8bd4a1e5cc06efa42098ef41c8f98ec8c09a8acd4aba74a3f0b6c292b9269e5"
+core_amd64_digest="sha256:14fb530a1936b47e6e4e7fb4f6346aad3f267aa1f4af953a5c24e008896c6c7f"
 supervisor_image="ghcr.io/mauro2020/abedome-supervisor:2026.8.0.dev4"
 
 grep -Fxq "BR2_PACKAGE_HASSIO_CORE_IMAGE=\"${core_image}\"" \
@@ -25,7 +25,7 @@ grep -Fxq "  ABEDOME_PRELOADED_CORE_DIGEST: ${core_index_digest}" \
 	.github/workflows/build.yaml
 grep -Fxq "  ABEDOME_PRELOADED_CORE_AMD64_DIGEST: ${core_amd64_digest}" \
 	.github/workflows/build.yaml
-grep -Fxq '          CANDIDATE_SUFFIX: dev2' .github/workflows/build.yaml
+grep -Fxq '          CANDIDATE_SUFFIX: dev3' .github/workflows/build.yaml
 grep -Fxq 'data_image_size="1280M"' \
 	buildroot-external/package/hassio/create-data-partition.sh
 grep -Fxq '	data_image_size="6144M"' \

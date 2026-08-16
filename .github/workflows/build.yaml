@@ -39,9 +39,9 @@ on:
 
 env:
   PYTHON_VERSION: "3.13"
-  ABEDOME_PRELOADED_CORE_IMAGE: ghcr.io/mauro2020/abedome-core:2026.9.1.dev6
-  ABEDOME_PRELOADED_CORE_DIGEST: sha256:c31d9b4d1e79cd1263d3142a33f4f39becd231a20dd0bf38c087496d871ebd63
-  ABEDOME_PRELOADED_CORE_AMD64_DIGEST: sha256:2fb19a4c2be9f5d09d0f78c9b757fca9999243c8d8a49cf1a61a6bd52fad1b10
+  ABEDOME_PRELOADED_CORE_IMAGE: ghcr.io/mauro2020/abedome-core:2026.9.1.dev7
+  ABEDOME_PRELOADED_CORE_DIGEST: sha256:a8bd4a1e5cc06efa42098ef41c8f98ec8c09a8acd4aba74a3f0b6c292b9269e5
+  ABEDOME_PRELOADED_CORE_AMD64_DIGEST: sha256:14fb530a1936b47e6e4e7fb4f6346aad3f267aa1f4af953a5c24e008896c6c7f
 
 jobs:
   prepare:
@@ -104,7 +104,7 @@ jobs:
           CHANNEL: ${{ inputs.hassio_channel }}
           PUBLISH: ${{ inputs.publish }}
           RUN_TESTS: ${{ inputs.run_tests }}
-          CANDIDATE_SUFFIX: dev2
+          CANDIDATE_SUFFIX: dev3
         run: |
           if [ "${GITHUB_REF}" != "refs/heads/abedome/develop" ]; then
             echo "::error::The ABEDOME update-test build may only run from abedome/develop."

@@ -71,7 +71,7 @@ is printed or uploaded.
 6. Run the manual feed workflow with the exact candidate versions, all three
    installed baselines, both approved image digests, and the RAUC URL.
 7. Clone the validated `17.3.dev1785881843` VM and test its in-place update to
-   `18.2.dev2`, reboot and rollback before approving any wider use.
+   `18.2.dev3`, reboot and rollback before approving any wider use.
 
 GitHub Actions artifacts are deliberately not used as the update URL: they
 expire and are not a reliable public update endpoint.

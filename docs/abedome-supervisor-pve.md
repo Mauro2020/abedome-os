@@ -4,7 +4,7 @@ The x86-64 OVA validation build preloads the approved managed images:
 
 ```text
 ghcr.io/mauro2020/abedome-supervisor:2026.8.0.dev4
-ghcr.io/mauro2020/abedome-core:2026.9.1.dev6
+ghcr.io/mauro2020/abedome-core:2026.9.1.dev7
 ```
 
 It also persists the ABEDOME development feed template:

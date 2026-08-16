@@ -37,7 +37,7 @@ config BR2_PACKAGE_HASSIO_CORE_IMAGE
 	  Optional full image reference with an approved version tag
 	  whose digest is verified by the ABEDOME candidate workflow.
 	  For example:
-	  ghcr.io/mauro2020/abedome-core:2026.9.1.dev6
+	  ghcr.io/mauro2020/abedome-core:2026.9.1.dev7
 
 	  When set, this image replaces the lightweight landing page in
 	  the data partition and seeds the managed Core state for an

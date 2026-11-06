@@ -24,7 +24,7 @@ config BR2_PACKAGE_HASSIO_SUPERVISOR_IMAGE
 	help
 	  Optional full image reference with an immutable test tag.
 	  For example:
-	  ghcr.io/mauro2020/abedome-supervisor:2026.8.0.dev4
+	  ghcr.io/mauro2020/abedome-supervisor:2026.10.5
 
 	  When set, this image is preloaded as the initial
 	  Supervisor image. Leave it empty to use the image from
@@ -37,7 +37,7 @@ config BR2_PACKAGE_HASSIO_CORE_IMAGE
 	  Optional full image reference with an approved version tag
 	  whose digest is verified by the ABEDOME candidate workflow.
 	  For example:
-	  ghcr.io/mauro2020/abedome-core:2026.9.1.dev7
+	  ghcr.io/mauro2020/abedome-core:2026.11.0
 
 	  When set, this image replaces the lightweight landing page in
 	  the data partition and seeds the managed Core state for an

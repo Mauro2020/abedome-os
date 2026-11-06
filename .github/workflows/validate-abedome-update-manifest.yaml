@@ -6,6 +6,7 @@ on:
       - ".github/workflows/validate-abedome-update-manifest.yaml"
       - ".github/workflows/generate-abedome-test-update-manifest.yaml"
       - ".github/workflows/publish-abedome-dev-test-feed.yaml"
+      - ".github/workflows/publish-abedome-stable-feed.yaml"
       - "scripts/render_abedome_update_manifest.py"
       - "updates/**"
   push:
@@ -15,6 +16,7 @@ on:
       - ".github/workflows/validate-abedome-update-manifest.yaml"
       - ".github/workflows/generate-abedome-test-update-manifest.yaml"
       - ".github/workflows/publish-abedome-dev-test-feed.yaml"
+      - ".github/workflows/publish-abedome-stable-feed.yaml"
       - "scripts/render_abedome_update_manifest.py"
       - "updates/**"
 
@@ -34,6 +36,7 @@ jobs:
       - name: Render fixture
         run: |
           python3 scripts/render_abedome_update_manifest.py \
+            --channel dev \
             --source updates/fixtures/upstream-dev.json \
             --output /tmp/abedome-supervisor-only-dev.json \
             --supervisor-version 2026.8.0.dev2 \
@@ -47,6 +50,21 @@ jobs:
             --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb'
 
           python3 scripts/render_abedome_update_manifest.py \
+            --channel stable \
+            --source updates/fixtures/upstream-stable.json \
+            --output /tmp/abedome-stable.json \
+            --supervisor-version 2026.10.5 \
+            --supervisor-version-baseline 2026.8.0.dev4 \
+            --supervisor-image ghcr.io/mauro2020/abedome-supervisor \
+            --core-version 2026.11.0 \
+            --core-version-baseline 2026.9.1.dev7 \
+            --core-image ghcr.io/mauro2020/abedome-core \
+            --hassos-ova-version 18.4 \
+            --hassos-ova-version-baseline 18.4.dev0 \
+            --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb'
+
+          python3 scripts/render_abedome_update_manifest.py \
+            --channel dev \
             --source updates/fixtures/upstream-dev.json \
             --output /tmp/abedome-core-only-dev.json \
             --supervisor-version 2026.8.0.dev1 \
@@ -60,6 +78,7 @@ jobs:
             --ota-url-template 'https://updates.example.invalid/{version}/{os_name}_{board}-{version}.raucb'
 
           python3 scripts/render_abedome_update_manifest.py \
+            --channel dev \
             --source updates/fixtures/upstream-dev.json \
             --output /tmp/abedome-os-only-dev.json \
             --supervisor-version 2026.8.0.dev1 \
@@ -83,6 +102,7 @@ jobs:
           )
           core_only = json.loads(Path("/tmp/abedome-core-only-dev.json").read_text())
           os_only = json.loads(Path("/tmp/abedome-os-only-dev.json").read_text())
+          stable = json.loads(Path("/tmp/abedome-stable.json").read_text())
 
           assert supervisor_only["channel"] == "dev"
           assert supervisor_only["supervisor"] == "2026.8.0.dev2"
@@ -92,6 +112,10 @@ jobs:
           assert os_only["supervisor"] == "2026.8.0.dev1"
           assert os_only["homeassistant"]["qemux86-64"] == "2026.9.0.dev0"
           assert os_only["hassos"]["ova"] == "18.2.dev0"
+          assert stable["channel"] == "stable"
+          assert stable["supervisor"] == "2026.10.5"
+          assert stable["homeassistant"]["qemux86-64"] == "2026.11.0"
+          assert stable["hassos"]["ova"] == "18.4"
 
           for manifest in (supervisor_only, core_only, os_only):
               assert manifest["images"]["supervisor"] == "ghcr.io/mauro2020/abedome-supervisor"
@@ -151,6 +175,8 @@ jobs:
               ("2026.8.0.dev2", "2026.8.0.dev2", "2026.9.0.dev2", "2026.9.0.dev2", "18.2.dev0", "17.3.dev1785881843"),
               # Numeric rather than lexical ordering, plus dev-to-stable promotion.
               ("2026.8.0.dev10", "2026.8.0.dev9", "2026.10.0.dev1", "2026.9.0.dev202608050310", "18.2", "18.2.dev10"),
+              # Coordinated component promotion from development to stable.
+              ("2026.10.5", "2026.8.0.dev4", "2026.11.0", "2026.9.1.dev7", "18.4", "18.4.dev0"),
           )
           rejected = (
               # Supervisor regression, even though Core advances.
@@ -164,6 +190,8 @@ jobs:
               ("not-a-version", "2026.8.0.dev2", "2026.9.0.dev2", "2026.9.0.dev1", "18.2.dev0", "18.2.dev0"),
               ("2026.8.0.dev3", "2026.8.0.dev2", "2026.9.0.dev2", "not-a-version", "18.2.dev0", "18.2.dev0"),
               ("2026.8.0.dev3", "2026.8.0.dev3", "2026.9.0.dev2", "2026.9.0.dev2", "not-a-version", "18.2.dev0"),
+              # Stable must not regress to a development build of the same release.
+              ("2026.10.5.dev1", "2026.10.5", "2026.11.0", "2026.11.0", "18.4", "18.4"),
           )
 
           for versions in accepted:
@@ -183,6 +211,7 @@ jobs:
         run: |
           set +e
           python3 scripts/render_abedome_update_manifest.py \
+            --channel dev \
             --source updates/fixtures/upstream-dev.json \
             --output /tmp/regressed-abedome-dev.json \
             --supervisor-version 2026.8.0.dev2 \
@@ -221,6 +250,7 @@ jobs:
         run: |
           set +e
           python3 scripts/render_abedome_update_manifest.py \
+            --channel dev \
             --source updates/fixtures/upstream-dev.json \
             --output /tmp/regressed-supervisor-abedome-dev.json \
             --supervisor-version 2026.8.0.dev2 \
@@ -259,6 +289,7 @@ jobs:
         run: |
           set +e
           python3 scripts/render_abedome_update_manifest.py \
+            --channel dev \
             --source updates/fixtures/upstream-dev.json \
             --output /tmp/regressed-os-abedome-dev.json \
             --supervisor-version 2026.8.0.dev2 \
@@ -297,6 +328,7 @@ jobs:
         run: |
           set +e
           python3 scripts/render_abedome_update_manifest.py \
+            --channel dev \
             --source updates/fixtures/upstream-dev.json \
             --output /tmp/no-op-abedome-dev.json \
             --supervisor-version 2026.8.0.dev2 \
@@ -335,6 +367,7 @@ jobs:
         run: |
           set +e
           python3 scripts/render_abedome_update_manifest.py \
+            --channel dev \
             --source updates/fixtures/upstream-dev.json \
             --output /tmp/invalid-abedome-dev.json \
             --supervisor-version 2026.8.0.dev2 \
@@ -360,6 +393,7 @@ jobs:
         run: |
           set +e
           python3 scripts/render_abedome_update_manifest.py \
+            --channel dev \
             --source updates/fixtures/upstream-dev.json \
             --output /tmp/invalid-supervisor-abedome-dev.json \
             --supervisor-version 2026.8.0.dev2 \

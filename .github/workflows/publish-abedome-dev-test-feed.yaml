@@ -43,7 +43,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: abedome-dev-test-update-feed
+  group: abedome-update-feed
   cancel-in-progress: false
 
 jobs:
@@ -215,6 +215,7 @@ jobs:
           OTA_URL_TEMPLATE: ${{ inputs.ota_url_template }}
         run: |
           python3 scripts/render_abedome_update_manifest.py \
+            --channel dev \
             --source upstream-dev.json \
             --output site/updates/dev.json \
             --supervisor-version "${SUPERVISOR_VERSION}" \
@@ -227,6 +228,24 @@ jobs:
             --hassos-ova-version-baseline "${HASSOS_OVA_VERSION_BASELINE}" \
             --ota-url-template "${OTA_URL_TEMPLATE}"
 
+      - name: Preserve the published stable feed
+        run: |
+          stable_url="https://mauro2020.github.io/abedome-os/updates/stable.json"
+          status="$(curl --silent --show-error --location --output /tmp/stable.json --write-out '%{http_code}' "${stable_url}")"
+          case "${status}" in
+            200)
+              jq -e '.channel == "stable"' /tmp/stable.json > /dev/null
+              install -D -m 0644 /tmp/stable.json site/updates/stable.json
+              ;;
+            404)
+              echo "No stable feed has been published yet."
+              ;;
+            *)
+              echo "Refusing to replace GitHub Pages after stable feed download returned HTTP ${status}."
+              exit 1
+              ;;
+          esac
+
       - name: Create technical landing page
         run: |
           cat > site/index.html <<'HTML'
@@ -237,8 +256,8 @@ jobs:
               <title>ABEDOME test updates</title>
             </head>
             <body>
-              <h1>ABEDOME dev test update feed</h1>
-              <p>This endpoint is for manually approved ABEDOME development validation only.</p>
+              <h1>ABEDOME update metadata</h1>
+              <p>Development and stable manifests are published only after their separate approval gates.</p>
             </body>
           </html>
           HTML
@@ -293,7 +312,7 @@ jobs:
             echo "- Installed Operating System baseline: \`${HASSOS_OVA_VERSION_BASELINE}\`"
             echo "- Supported target: \`ova / qemux86-64 / linux-amd64\`"
             echo
-            echo "This is a manually deployed test feed. Stable and beta channels are not published."
+            echo "This is a manually deployed test feed. The protected stable channel, when present, was preserved unchanged."
             echo "The Supervisor and Core tags were matched to their approved digests immediately before deployment."
             echo "The tag-based feed must not be used on another architecture or after republishing that tag."
           } >> "$GITHUB_STEP_SUMMARY"

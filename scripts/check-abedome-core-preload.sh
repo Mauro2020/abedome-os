@@ -4,12 +4,15 @@ set -euo pipefail
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repository_root}"
 
-core_image="ghcr.io/mauro2020/abedome-core:2026.9.1.dev7"
+core_image="ghcr.io/mauro2020/abedome-core:2026.11.0"
 core_repository=${core_image%:*}
 core_version=${core_image##*:}
-core_index_digest="sha256:a8bd4a1e5cc06efa42098ef41c8f98ec8c09a8acd4aba74a3f0b6c292b9269e5"
-core_amd64_digest="sha256:14fb530a1936b47e6e4e7fb4f6346aad3f267aa1f4af953a5c24e008896c6c7f"
-supervisor_image="ghcr.io/mauro2020/abedome-supervisor:2026.8.0.dev4"
+unresolved_digest="sha256:0000000000000000000000000000000000000000000000000000000000000000"
+core_index_digest="${unresolved_digest}"
+core_amd64_digest="${unresolved_digest}"
+supervisor_image="ghcr.io/mauro2020/abedome-supervisor:2026.10.5"
+supervisor_index_digest="${unresolved_digest}"
+supervisor_amd64_digest="${unresolved_digest}"
 
 grep -Fxq "BR2_PACKAGE_HASSIO_CORE_IMAGE=\"${core_image}\"" \
 	buildroot-external/configs/ova_defconfig
@@ -25,7 +28,14 @@ grep -Fxq "  ABEDOME_PRELOADED_CORE_DIGEST: ${core_index_digest}" \
 	.github/workflows/build.yaml
 grep -Fxq "  ABEDOME_PRELOADED_CORE_AMD64_DIGEST: ${core_amd64_digest}" \
 	.github/workflows/build.yaml
-grep -Fxq '          CANDIDATE_SUFFIX: dev3' .github/workflows/build.yaml
+grep -Fxq "  ABEDOME_PRELOADED_SUPERVISOR_IMAGE: ${supervisor_image}" \
+	.github/workflows/build.yaml
+grep -Fxq "  ABEDOME_PRELOADED_SUPERVISOR_DIGEST: ${supervisor_index_digest}" \
+	.github/workflows/build.yaml
+grep -Fxq "  ABEDOME_PRELOADED_SUPERVISOR_AMD64_DIGEST: ${supervisor_amd64_digest}" \
+	.github/workflows/build.yaml
+grep -Fxq '  ABEDOME_RELEASE_PINS_READY: "false"' .github/workflows/build.yaml
+grep -Fxq '          CANDIDATE_SUFFIX: dev0' .github/workflows/build.yaml
 grep -Fxq 'data_image_size="1280M"' \
 	buildroot-external/package/hassio/create-data-partition.sh
 grep -Fxq '	data_image_size="6144M"' \
@@ -117,13 +127,24 @@ chmod +x "${temporary_dir}/bin/debugfs"
 PATH="${temporary_dir}/bin:${PATH}" \
 	FAKE_SUPERVISOR_STATE_DIR="${fake_state}" \
 	bash scripts/check-abedome-ova-build.sh \
-		"${fake_output}" "${core_image}" "${core_index_digest}"
+		"${fake_output}" "${core_image}" "${core_index_digest}" \
+		"${supervisor_image}" dev
+
+if PATH="${temporary_dir}/bin:${PATH}" \
+	FAKE_SUPERVISOR_STATE_DIR="${fake_state}" \
+	bash scripts/check-abedome-ova-build.sh \
+		"${fake_output}" "${core_image}" "${core_index_digest}" \
+		"${supervisor_image}" stable > /dev/null 2>&1; then
+	echo "The post-build verifier accepted a dev updater state as stable." >&2
+	exit 1
+fi
 
 touch "${fake_package}/images/ghcr.io_home-assistant_qemux86-64-homeassistant_landingpage.tar"
 if PATH="${temporary_dir}/bin:${PATH}" \
 	FAKE_SUPERVISOR_STATE_DIR="${fake_state}" \
 	bash scripts/check-abedome-ova-build.sh \
 		"${fake_output}" "${core_image}" "${core_index_digest}" \
+		"${supervisor_image}" dev \
 		> /dev/null 2>&1; then
 	echo "The post-build verifier accepted an upstream Core archive." >&2
 	exit 1

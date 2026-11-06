@@ -10,7 +10,6 @@ on:
         type: choice
         options:
           - stable
-          - beta
           - dev
       supervisor_version:
         description: Supervisor candidate tag; may equal baseline when Core advances
@@ -87,13 +86,13 @@ jobs:
           SUPERVISOR_IMAGE: ${{ inputs.supervisor_image }}
           SUPERVISOR_DIGEST: ${{ inputs.supervisor_digest }}
         run: |
-          if ! printf '%s' "${SUPERVISOR_VERSION}" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+\.dev[0-9]+$'; then
-            echo "Use a published Supervisor development version such as 2026.8.0.dev2."
+          if ! printf '%s' "${SUPERVISOR_VERSION}" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+(\.dev[0-9]+)?$'; then
+            echo "Use a published Supervisor stable or development version."
             exit 2
           fi
 
-          if ! printf '%s' "${SUPERVISOR_VERSION_BASELINE}" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+\.dev[0-9]+$'; then
-            echo "Use the exact development version reported by ha supervisor info on the validation VM."
+          if ! printf '%s' "${SUPERVISOR_VERSION_BASELINE}" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+(\.dev[0-9]+)?$'; then
+            echo "Use the exact version reported by ha supervisor info on the validation VM."
             exit 2
           fi
 
@@ -126,13 +125,13 @@ jobs:
           CORE_IMAGE: ${{ inputs.core_image }}
           CORE_DIGEST: ${{ inputs.core_digest }}
         run: |
-          if ! printf '%s' "${CORE_VERSION}" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+\.dev[0-9]+$'; then
-            echo "Use a published Core development version such as 2026.9.0.dev1."
+          if ! printf '%s' "${CORE_VERSION}" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+(\.dev[0-9]+)?$'; then
+            echo "Use a published Core stable or development version."
             exit 1
           fi
 
-          if ! printf '%s' "${CORE_VERSION_BASELINE}" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+\.dev[0-9]+$'; then
-            echo "Use the exact development version reported by ha core info on the validation VM."
+          if ! printf '%s' "${CORE_VERSION_BASELINE}" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+(\.dev[0-9]+)?$'; then
+            echo "Use the exact version reported by ha core info on the validation VM."
             exit 1
           fi
 
@@ -158,6 +157,7 @@ jobs:
 
       - name: Render and validate ABEDOME manifest
         env:
+          CHANNEL: ${{ inputs.source_channel }}
           SUPERVISOR_VERSION: ${{ inputs.supervisor_version }}
           SUPERVISOR_VERSION_BASELINE: ${{ inputs.supervisor_version_baseline }}
           SUPERVISOR_IMAGE: ${{ inputs.supervisor_image }}
@@ -169,6 +169,7 @@ jobs:
           OTA_URL_TEMPLATE: ${{ inputs.ota_url_template }}
         run: |
           python3 scripts/render_abedome_update_manifest.py \
+            --channel "${CHANNEL}" \
             --source upstream-manifest.json \
             --output abedome-${{ inputs.source_channel }}.json \
             --supervisor-version "${SUPERVISOR_VERSION}" \

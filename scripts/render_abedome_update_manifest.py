@@ -15,9 +15,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 ALLOWED_CHANNELS = {"stable", "beta", "dev"}
-CORE_DEVELOPMENT_VERSION = re.compile(
+COMPONENT_VERSION = re.compile(
     r"^(?P<year>[0-9]{4})\.(?P<month>[0-9]{1,2})\."
-    r"(?P<patch>[0-9]+)\.dev(?P<build>[0-9]+)$"
+    r"(?P<patch>[0-9]+)(?:\.dev(?P<build>[0-9]+))?$"
 )
 HASSOS_VERSION = re.compile(
     r"^(?P<major>[0-9]+)\.(?P<minor>[0-9]+)"
@@ -61,12 +61,23 @@ def validate_image_repository(value: object, name: str) -> str:
 def parse_core_development_version(
     value: object,
     name: str,
-) -> tuple[int, int, int, int]:
+) -> tuple[int, int, int, int, int]:
     version = require_value(value, name)
-    match = CORE_DEVELOPMENT_VERSION.fullmatch(version)
+    match = COMPONENT_VERSION.fullmatch(version)
     if match is None:
-        fail(f"{name} must use the YYYY.M.P.devN development version format")
-    return tuple(int(component) for component in match.groups())
+        fail(f"{name} must use the YYYY.M.P or YYYY.M.P.devN version format")
+    year = int(match.group("year"))
+    month = int(match.group("month"))
+    patch = int(match.group("patch"))
+    build = match.group("build")
+    # A stable YYYY.M.P release follows its YYYY.M.P.devN candidates.
+    return (year, month, patch, 1, 0) if build is None else (
+        year,
+        month,
+        patch,
+        0,
+        int(build),
+    )
 
 
 def require_non_regressing_development_version(
@@ -202,6 +213,7 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--channel", choices=sorted(ALLOWED_CHANNELS), required=True)
     parser.add_argument("--supervisor-version", required=True)
     parser.add_argument("--supervisor-version-baseline", required=True)
     parser.add_argument("--supervisor-image", required=True)
@@ -217,6 +229,13 @@ def parse_arguments() -> argparse.Namespace:
 def main() -> None:
     args = parse_arguments()
     manifest = load_manifest(args.source)
+
+    source_channel = require_value(manifest.get("channel"), "channel")
+    if source_channel != args.channel:
+        fail(
+            f"source channel {source_channel!r} does not match requested "
+            f"channel {args.channel!r}"
+        )
 
     images = manifest.get("images")
     if not isinstance(images, dict):

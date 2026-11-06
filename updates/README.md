@@ -20,13 +20,24 @@ refused. This permits an OS-only migration when Core and Supervisor remain at
 their exact baselines, or a coordinated migration in which one or both managed
 components also advance without regression.
 
-A separate manual workflow, `Publish ABEDOME dev test update feed`, may deploy
-a validated **dev-only** manifest to GitHub Pages after all release gates in
-[controlled-update-channel.md](../docs/controlled-update-channel.md) have been
-completed. It accepts RAUC bundles only from GitHub Releases in this repository,
-downloads the resolved OVA bundle, verifies its ABEDOME signature,
-compatibility and version, runs only from the protected `abedome/develop`
-branch, and never publishes stable or beta channels.
+Two separate manual workflows publish GitHub Pages manifests. `Publish ABEDOME
+dev test update feed` remains the development-only path. `Publish ABEDOME
+stable update feed` is additionally gated by the protected
+`abedome-stable-feed` environment and accepts only stable Core, Supervisor and
+OS versions. Both workflows accept RAUC bundles only from GitHub Releases in
+this repository, verify the exact ABEDOME signature, compatibility and version,
+and run only from `abedome/develop`. Each workflow preserves and validates the
+other channel's existing manifest before deploying the replacement Pages
+artifact, so publishing one channel cannot silently remove the other.
+
+The stable feed is the final release action. It must not be approved until the
+exact Core and Supervisor index plus `linux/amd64` digests have been recorded,
+the signed OS bundle has passed fresh-install and in-place RAUC tests on PVE,
+and rollback plus `/data` preservation have been verified. A candidate build
+never publishes either feed.
+
+The exact candidate inputs and PVE release gate are documented in
+[abedome-stable-release.md](../docs/abedome-stable-release.md).
 
 The update schema is tag-based. Digest verification is a point-in-time release
 gate, not a registry-enforced immutable reference: approved Supervisor and Core
@@ -38,6 +49,6 @@ user, device, network, or installation data. See
 [github-pages-dev-test-feed.md](../docs/github-pages-dev-test-feed.md) for the
 required signing, release, deployment, and PVE validation order.
 
-`fixtures/upstream-dev.json` is a structural fixture used only by CI. The
-`example.invalid` domain is intentionally non-resolvable and cannot be used as
-an update endpoint.
+`fixtures/upstream-dev.json` and `fixtures/upstream-stable.json` are structural
+fixtures used only by CI. The `example.invalid` domain is intentionally
+non-resolvable and cannot be used as an update endpoint.

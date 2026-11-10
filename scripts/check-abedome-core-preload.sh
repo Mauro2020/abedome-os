@@ -4,15 +4,14 @@ set -euo pipefail
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repository_root}"
 
-core_image="ghcr.io/mauro2020/abedome-core:2026.11.0"
+core_image="ghcr.io/mauro2020/abedome-core:2026.11.1"
 core_repository=${core_image%:*}
 core_version=${core_image##*:}
-unresolved_digest="sha256:0000000000000000000000000000000000000000000000000000000000000000"
-core_index_digest="${unresolved_digest}"
-core_amd64_digest="${unresolved_digest}"
-supervisor_image="ghcr.io/mauro2020/abedome-supervisor:2026.10.5"
-supervisor_index_digest="${unresolved_digest}"
-supervisor_amd64_digest="${unresolved_digest}"
+core_index_digest="sha256:d311b61cbc1e4549b0a4919ce5e66ceb7693b3c89cf27d41def6bd5c4154c211"
+core_amd64_digest="sha256:50cfccddde92f1975c01b0f05df99d5b7122e7c3694e3b487e15d034d6c80940"
+supervisor_image="ghcr.io/mauro2020/abedome-supervisor:2026.11.0"
+supervisor_index_digest="sha256:751e40e46ad35f890d07431d8cbfe96aa692d6508ad42d5c2081756347c8342b"
+supervisor_amd64_digest="sha256:da8b1ce7b30415eddf6de3df6f4cfae9c8cd410d7be0fc8fe1b1f83db39c5ffb"
 
 grep -Fxq "BR2_PACKAGE_HASSIO_CORE_IMAGE=\"${core_image}\"" \
 	buildroot-external/configs/ova_defconfig
@@ -34,8 +33,35 @@ grep -Fxq "  ABEDOME_PRELOADED_SUPERVISOR_DIGEST: ${supervisor_index_digest}" \
 	.github/workflows/build.yaml
 grep -Fxq "  ABEDOME_PRELOADED_SUPERVISOR_AMD64_DIGEST: ${supervisor_amd64_digest}" \
 	.github/workflows/build.yaml
-grep -Fxq '  ABEDOME_RELEASE_PINS_READY: "false"' .github/workflows/build.yaml
+grep -Fxq '  ABEDOME_RELEASE_PINS_READY: "true"' .github/workflows/build.yaml
 grep -Fxq '          CANDIDATE_SUFFIX: dev0' .github/workflows/build.yaml
+
+digest_condition="\${{ github.event_name == 'release' || needs.prepare.outputs.publish_build == 'true' || (github.event_name == 'workflow_dispatch' && inputs.abedome_stable_candidate) }}"
+candidate_condition="\${{ github.event_name == 'workflow_dispatch' && inputs.abedome_stable_candidate }}"
+publish_condition="\${{ github.event_name != 'release' && needs.prepare.outputs.publish_build == 'true' }}"
+test "$(grep -Fxc "        if: ${digest_condition}" .github/workflows/build.yaml)" -eq 2
+
+sign_job=$(sed -n '/^  sign:$/,/^  update_index:$/p' .github/workflows/build.yaml)
+grep -Fxq "    if: ${digest_condition}" <<< "${sign_job}"
+test "$(grep -Fxc "        if: ${publish_condition}" <<< "${sign_job}")" -eq 3
+grep -Fq -- '- name: Upload signed digests to R2' <<< "${sign_job}"
+
+candidate_artifact=$(sed -n '/- name: Upload signed candidate digests artifact/,/- name: Upload release assets/p' .github/workflows/build.yaml)
+grep -Fxq "        if: ${candidate_condition}" <<< "${candidate_artifact}"
+if grep -Fq '          archive: false' <<< "${candidate_artifact}"; then
+	echo "The signed candidate digest artifact would expire instead of being retained." >&2
+	exit 1
+fi
+# This GitHub expression must remain literal in the workflow contract.
+# shellcheck disable=SC2016
+grep -Fq '          name: abedome-stable-candidate-${{ needs.prepare.outputs.version_full }}-digests' <<< "${candidate_artifact}"
+grep -Fq '            SHA256SUMS' <<< "${candidate_artifact}"
+grep -Fq '            SHA256SUMS.sigstore.json' <<< "${candidate_artifact}"
+grep -Fq '          if-no-files-found: error' <<< "${candidate_artifact}"
+
+update_index_job=$(sed -n '/^  update_index:$/,/^  bump_version:$/p' .github/workflows/build.yaml)
+grep -Fxq "    if: ${publish_condition}" <<< "${update_index_job}"
+
 grep -Fxq 'data_image_size="1280M"' \
 	buildroot-external/package/hassio/create-data-partition.sh
 grep -Fxq '	data_image_size="6144M"' \

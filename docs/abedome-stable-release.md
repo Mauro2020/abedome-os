@@ -5,12 +5,11 @@ upstream compatibility identifiers (`haos`, `haos-ova`, `homeassistant` and the
 `haos_ova-*` artifact names). The supported first stable target is OVA,
 `qemux86-64`, `linux/amd64` on Proxmox VE.
 
-The build source intentionally contains an unresolved release gate:
-`ABEDOME_RELEASE_PINS_READY` remains `false`, and the Core/Supervisor digest
-fields remain zero sentinels, until the immutable releases exist. A candidate
-or release build must not be started by weakening this gate. Replace all six
-digest fields with the independently verified index and `linux/amd64` manifest
-digests, then set the gate to `true` in the same reviewed change.
+The release gate is closed with independently verified immutable pins for Core
+2026.11.1 and Supervisor 2026.11.0. `ABEDOME_RELEASE_PINS_READY` is `true`, and
+the workflow records both the OCI index and `linux/amd64` manifest digest for
+each image. Candidate and release builds must keep all four digests unchanged
+unless a separately approved immutable component release replaces them.
 
 ## Candidate
 
@@ -23,17 +22,20 @@ Run `OS build` manually from `abedome/develop` with:
 - `abedome_stable_candidate=true`
 - `abedome_update_test=false`
 
-This produces `18.4.dev0` artifacts but does not publish a feed. The workflow
-requires the persistent ABEDOME RAUC certificate, verifies both managed OCI
-images and their platform manifests, checks that the embedded updater channel
-is `stable`, rejects an upstream Core archive and rejects a data image carrying
-`/docker/.wipe-scheduled`.
+This produces `18.4.dev0` artifacts but does not publish a feed or upload to
+R2. The workflow requires the persistent ABEDOME RAUC certificate, verifies
+both managed OCI images and their platform manifests, checks that the embedded
+updater channel is `stable`, rejects an upstream Core archive and rejects a
+data image carrying `/docker/.wipe-scheduled`. It also signs the merged image
+checksums with Sigstore and stores `SHA256SUMS` and
+`SHA256SUMS.sigstore.json` in the
+`abedome-stable-candidate-18.4.dev0-digests` Actions artifact.
 
 ## Validation
 
 1. Verify `xz -t`, `qemu-img check`, SHA256SUMS, Sigstore bundle and the RAUC
    signature/compatibility/version.
-2. Boot a fresh VM offline and verify Core 2026.11.0, Supervisor 2026.10.5,
+2. Boot a fresh VM offline and verify Core 2026.11.1, Supervisor 2026.11.0,
    onboarding, branding and at least 256 MiB of guarded preload space.
 3. Snapshot the update-test VM, record `/data` sentinels and its `mobile_app`
    webhook/push registration, then install through a staged manifest.

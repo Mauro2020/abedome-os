@@ -53,10 +53,10 @@ jobs:
             --channel stable \
             --source updates/fixtures/upstream-stable.json \
             --output /tmp/abedome-stable.json \
-            --supervisor-version 2026.10.5 \
+            --supervisor-version 2026.11.0 \
             --supervisor-version-baseline 2026.8.0.dev4 \
             --supervisor-image ghcr.io/mauro2020/abedome-supervisor \
-            --core-version 2026.11.0 \
+            --core-version 2026.11.1 \
             --core-version-baseline 2026.9.1.dev7 \
             --core-image ghcr.io/mauro2020/abedome-core \
             --hassos-ova-version 18.4 \
@@ -113,8 +113,8 @@ jobs:
           assert os_only["homeassistant"]["qemux86-64"] == "2026.9.0.dev0"
           assert os_only["hassos"]["ova"] == "18.2.dev0"
           assert stable["channel"] == "stable"
-          assert stable["supervisor"] == "2026.10.5"
-          assert stable["homeassistant"]["qemux86-64"] == "2026.11.0"
+          assert stable["supervisor"] == "2026.11.0"
+          assert stable["homeassistant"]["qemux86-64"] == "2026.11.1"
           assert stable["hassos"]["ova"] == "18.4"
 
           for manifest in (supervisor_only, core_only, os_only):
@@ -176,7 +176,7 @@ jobs:
               # Numeric rather than lexical ordering, plus dev-to-stable promotion.
               ("2026.8.0.dev10", "2026.8.0.dev9", "2026.10.0.dev1", "2026.9.0.dev202608050310", "18.2", "18.2.dev10"),
               # Coordinated component promotion from development to stable.
-              ("2026.10.5", "2026.8.0.dev4", "2026.11.0", "2026.9.1.dev7", "18.4", "18.4.dev0"),
+              ("2026.11.0", "2026.8.0.dev4", "2026.11.1", "2026.9.1.dev7", "18.4", "18.4.dev0"),
           )
           rejected = (
               # Supervisor regression, even though Core advances.

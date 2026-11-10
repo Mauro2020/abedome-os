@@ -77,15 +77,15 @@ on:
 
 env:
   PYTHON_VERSION: "3.13"
-  # This gate stays false until both release workflows have produced and
-  # independently verified the immutable index and linux/amd64 digests below.
-  ABEDOME_RELEASE_PINS_READY: "false"
-  ABEDOME_PRELOADED_CORE_IMAGE: ghcr.io/mauro2020/abedome-core:2026.11.0
-  ABEDOME_PRELOADED_CORE_DIGEST: sha256:0000000000000000000000000000000000000000000000000000000000000000
-  ABEDOME_PRELOADED_CORE_AMD64_DIGEST: sha256:0000000000000000000000000000000000000000000000000000000000000000
-  ABEDOME_PRELOADED_SUPERVISOR_IMAGE: ghcr.io/mauro2020/abedome-supervisor:2026.10.5
-  ABEDOME_PRELOADED_SUPERVISOR_DIGEST: sha256:0000000000000000000000000000000000000000000000000000000000000000
-  ABEDOME_PRELOADED_SUPERVISOR_AMD64_DIGEST: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  # These immutable index and linux/amd64 manifest digests were independently
+  # verified after the approved Core and Supervisor publication workflows.
+  ABEDOME_RELEASE_PINS_READY: "true"
+  ABEDOME_PRELOADED_CORE_IMAGE: ghcr.io/mauro2020/abedome-core:2026.11.1
+  ABEDOME_PRELOADED_CORE_DIGEST: sha256:d311b61cbc1e4549b0a4919ce5e66ceb7693b3c89cf27d41def6bd5c4154c211
+  ABEDOME_PRELOADED_CORE_AMD64_DIGEST: sha256:50cfccddde92f1975c01b0f05df99d5b7122e7c3694e3b487e15d034d6c80940
+  ABEDOME_PRELOADED_SUPERVISOR_IMAGE: ghcr.io/mauro2020/abedome-supervisor:2026.11.0
+  ABEDOME_PRELOADED_SUPERVISOR_DIGEST: sha256:751e40e46ad35f890d07431d8cbfe96aa692d6508ad42d5c2081756347c8342b
+  ABEDOME_PRELOADED_SUPERVISOR_AMD64_DIGEST: sha256:da8b1ce7b30415eddf6de3df6f4cfae9c8cd410d7be0fc8fe1b1f83db39c5ffb
 
 jobs:
   prepare:
@@ -608,12 +608,12 @@ jobs:
             make BR2_CHECK_DOTCONFIG_OPTS="--github-format --strip-path-prefix=/build/" linux-check-dotconfig
 
       - name: Compute image digests
-        if: ${{ github.event_name == 'release' || needs.prepare.outputs.publish_build == 'true' }}
+        if: ${{ github.event_name == 'release' || needs.prepare.outputs.publish_build == 'true' || (github.event_name == 'workflow_dispatch' && inputs.abedome_stable_candidate) }}
         working-directory: output/images/
         run: sha256sum haos_* > SHA256SUMS.${{ matrix.board.id }}
 
       - name: Upload image digests artifact
-        if: ${{ github.event_name == 'release' || needs.prepare.outputs.publish_build == 'true' }}
+        if: ${{ github.event_name == 'release' || needs.prepare.outputs.publish_build == 'true' || (github.event_name == 'workflow_dispatch' && inputs.abedome_stable_candidate) }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sha256sums-${{ matrix.board.id }}
@@ -774,7 +774,7 @@ jobs:
 
   sign:
     name: Sign image digests
-    if: ${{ github.event_name == 'release' || needs.prepare.outputs.publish_build == 'true' }}
+    if: ${{ github.event_name == 'release' || needs.prepare.outputs.publish_build == 'true' || (github.event_name == 'workflow_dispatch' && inputs.abedome_stable_candidate) }}
     needs: [ build, prepare ]
     runs-on: ubuntu-22.04
     permissions:
@@ -800,17 +800,17 @@ jobs:
         run: cosign sign-blob --yes SHA256SUMS --bundle SHA256SUMS.sigstore.json
 
       - name: Setup Python version ${{ env.PYTHON_VERSION }}
-        if: ${{ github.event_name != 'release' }}
+        if: ${{ github.event_name != 'release' && needs.prepare.outputs.publish_build == 'true' }}
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install AWS CLI
-        if: ${{ github.event_name != 'release' }}
+        if: ${{ github.event_name != 'release' && needs.prepare.outputs.publish_build == 'true' }}
         run: pip install 'awscli<1.37.0'
 
-      - name: Upload artifacts
-        if: ${{ github.event_name != 'release' }}
+      - name: Upload signed digests to R2
+        if: ${{ github.event_name != 'release' && needs.prepare.outputs.publish_build == 'true' }}
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_OS_ARTIFACTS_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_OS_ARTIFACTS_KEY }}
@@ -822,6 +822,16 @@ jobs:
             --include "SHA256SUMS" \
             --include "SHA256SUMS.sigstore.json" \
             --endpoint-url ${{ secrets.R2_OS_ARTIFACTS_ENDPOINT }}
+
+      - name: Upload signed candidate digests artifact
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.abedome_stable_candidate }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: abedome-stable-candidate-${{ needs.prepare.outputs.version_full }}-digests
+          path: |
+            SHA256SUMS
+            SHA256SUMS.sigstore.json
+          if-no-files-found: error
 
       - name: Upload release assets
         if: ${{ github.event_name == 'release' }}

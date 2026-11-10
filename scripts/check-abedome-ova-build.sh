@@ -4,9 +4,13 @@ set -euo pipefail
 output_dir=$1
 core_image=$2
 core_archive_digest=$3
+supervisor_image=$4
+expected_channel=$5
 
 core_repository=${core_image%:*}
 core_version=${core_image##*:}
+supervisor_repository=${supervisor_image%:*}
+supervisor_version=${supervisor_image##*:}
 package_dir="${output_dir}/build/hassio-1.0.0"
 version_json="${package_dir}/version.json"
 data_image="${output_dir}/images/data.ext4"
@@ -20,7 +24,9 @@ test -f "${core_archive}"
 jq -e \
 	--arg repository "${core_repository}" \
 	--arg version "${core_version}" \
-	'.images.core == $repository and .core == $version' \
+	--arg supervisor_repository "${supervisor_repository}" \
+	--arg supervisor_version "${supervisor_version}" \
+	'.images.core == $repository and .core == $version and .images.supervisor == $supervisor_repository and .supervisor == $supervisor_version' \
 	"${version_json}" > /dev/null
 
 upstream_core_archive=$(
@@ -38,6 +44,12 @@ if [ -z "${debugfs_bin}" ]; then
 fi
 test -x "${debugfs_bin}"
 
+if "${debugfs_bin}" -R 'stat /docker/.wipe-scheduled' "${data_image}" \
+	> /dev/null 2>&1; then
+	echo "The candidate data image unexpectedly schedules a Docker data reset." >&2
+	exit 1
+fi
+
 homeassistant_state="$(
 	"${debugfs_bin}" -R 'cat /supervisor/homeassistant.json' "${data_image}" 2> /dev/null
 )"
@@ -53,5 +65,6 @@ jq -e \
 jq -e \
 	--arg repository "${core_repository}" \
 	--arg version "${core_version}" \
-	'.homeassistant == $version and .image.homeassistant == $repository' \
+	--arg channel "${expected_channel}" \
+	'.channel == $channel and .homeassistant == $version and .image.homeassistant == $repository' \
 	<<< "${updater_state}" > /dev/null

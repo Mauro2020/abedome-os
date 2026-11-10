@@ -1,4 +1,5 @@
 name: "Run command in HAOS build container"
+description: "Run one command inside the pinned Home Assistant OS builder image"
 inputs:
   image:
     description: "HAOS builder image to use"

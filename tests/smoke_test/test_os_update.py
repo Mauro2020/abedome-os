@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from time import sleep
 
 import pytest
@@ -41,6 +42,9 @@ def test_init(shell, shell_json):
 @pytest.mark.dependency(depends=["test_init"])
 @pytest.mark.timeout(600)  # TODO: reduce to 300 after 17.0 release
 def test_os_update(shell, shell_json, target):
+    if os.environ.get("HAOS_RUN_LIVE_UPDATE_TEST", "true").lower() != "true":
+        pytest.skip("ABEDOME validates RAUC updates against its staged manifest on PVE")
+
     def check_container_running(container_name):
         out = shell.run_check(
             f"docker container inspect -f '{{{{.State.Status}}}}' {container_name} || true"

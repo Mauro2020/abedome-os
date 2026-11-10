@@ -1,0 +1,282 @@
+name: Publish ABEDOME stable update feed
+
+on:
+  workflow_dispatch:
+    inputs:
+      supervisor_version:
+        description: Exact stable ABEDOME Supervisor version
+        required: true
+        type: string
+      supervisor_version_baseline:
+        description: Exact pre-update Supervisor baseline recorded for the validation VM
+        required: true
+        type: string
+      supervisor_digest:
+        description: Approved immutable Supervisor OCI index digest
+        required: true
+        type: string
+      supervisor_amd64_digest:
+        description: Approved immutable Supervisor linux/amd64 manifest digest
+        required: true
+        type: string
+      core_version:
+        description: Exact stable ABEDOME Core version
+        required: true
+        type: string
+      core_version_baseline:
+        description: Exact pre-update Core baseline recorded for the validation VM
+        required: true
+        type: string
+      core_digest:
+        description: Approved immutable Core OCI index digest
+        required: true
+        type: string
+      core_amd64_digest:
+        description: Approved immutable Core linux/amd64 manifest digest
+        required: true
+        type: string
+      hassos_ova_version:
+        description: Exact stable signed ABEDOME OS version
+        required: true
+        type: string
+      hassos_ova_version_baseline:
+        description: Exact pre-update OS baseline recorded for the validation VM
+        required: true
+        type: string
+      ota_url_template:
+        description: GitHub Release RAUC URL containing {version} and {board}
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: abedome-update-feed
+  cancel-in-progress: false
+
+jobs:
+  render:
+    name: Verify and stage stable feed
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    environment:
+      name: abedome-stable-feed
+    steps:
+      - name: Check out protected ABEDOME source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Validate stable publication inputs
+        env:
+          SUPERVISOR_VERSION: ${{ inputs.supervisor_version }}
+          SUPERVISOR_VERSION_BASELINE: ${{ inputs.supervisor_version_baseline }}
+          SUPERVISOR_DIGEST: ${{ inputs.supervisor_digest }}
+          SUPERVISOR_AMD64_DIGEST: ${{ inputs.supervisor_amd64_digest }}
+          CORE_VERSION: ${{ inputs.core_version }}
+          CORE_VERSION_BASELINE: ${{ inputs.core_version_baseline }}
+          CORE_DIGEST: ${{ inputs.core_digest }}
+          CORE_AMD64_DIGEST: ${{ inputs.core_amd64_digest }}
+          HASSOS_OVA_VERSION: ${{ inputs.hassos_ova_version }}
+          HASSOS_OVA_VERSION_BASELINE: ${{ inputs.hassos_ova_version_baseline }}
+          OTA_URL_TEMPLATE: ${{ inputs.ota_url_template }}
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/abedome/develop" ]; then
+            echo "The ABEDOME stable feed may only be published from abedome/develop."
+            exit 1
+          fi
+
+          stable_component_re='^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$'
+          component_baseline_re='^[0-9]{4}\.[0-9]{1,2}\.[0-9]+(\.dev[0-9]+)?$'
+          stable_os_re='^[0-9]+\.[0-9]+$'
+          os_baseline_re='^[0-9]+\.[0-9]+(\.dev[0-9]+)?$'
+          digest_re='^sha256:[0-9a-f]{64}$'
+
+          [[ "${SUPERVISOR_VERSION}" =~ ${stable_component_re} ]]
+          [[ "${CORE_VERSION}" =~ ${stable_component_re} ]]
+          [[ "${HASSOS_OVA_VERSION}" =~ ${stable_os_re} ]]
+          [[ "${SUPERVISOR_VERSION_BASELINE}" =~ ${component_baseline_re} ]]
+          [[ "${CORE_VERSION_BASELINE}" =~ ${component_baseline_re} ]]
+          [[ "${HASSOS_OVA_VERSION_BASELINE}" =~ ${os_baseline_re} ]]
+          [[ "${SUPERVISOR_DIGEST}" =~ ${digest_re} ]]
+          [[ "${SUPERVISOR_AMD64_DIGEST}" =~ ${digest_re} ]]
+          [[ "${CORE_DIGEST}" =~ ${digest_re} ]]
+          [[ "${CORE_AMD64_DIGEST}" =~ ${digest_re} ]]
+
+          case "${OTA_URL_TEMPLATE}" in
+            https://github.com/Mauro2020/abedome-os/releases/download/*)
+              ;;
+            *)
+              echo "Use a GitHub Release URL from Mauro2020/abedome-os."
+              exit 1
+              ;;
+          esac
+
+      - name: Verify immutable ABEDOME OCI digests
+        env:
+          SUPERVISOR_VERSION: ${{ inputs.supervisor_version }}
+          SUPERVISOR_DIGEST: ${{ inputs.supervisor_digest }}
+          SUPERVISOR_AMD64_DIGEST: ${{ inputs.supervisor_amd64_digest }}
+          CORE_VERSION: ${{ inputs.core_version }}
+          CORE_DIGEST: ${{ inputs.core_digest }}
+          CORE_AMD64_DIGEST: ${{ inputs.core_amd64_digest }}
+        run: |
+          verify_image() {
+            image=$1
+            index_digest=$2
+            amd64_digest=$3
+            resolved_digest="$(
+              docker buildx imagetools inspect "${image}" \
+                | awk '$1 == "Digest:" && digest == "" { digest = $2 } END { print digest }'
+            )"
+            if [ "${resolved_digest}" != "${index_digest}" ]; then
+              echo "${image} resolved to ${resolved_digest:-missing}, expected ${index_digest}."
+              exit 1
+            fi
+            docker buildx imagetools inspect --raw "${image}" \
+              | jq -e \
+                --arg digest "${amd64_digest}" \
+                'any(.manifests[]?; .digest == $digest and .platform.os == "linux" and .platform.architecture == "amd64")' \
+                > /dev/null
+          }
+
+          verify_image \
+            "ghcr.io/mauro2020/abedome-supervisor:${SUPERVISOR_VERSION}" \
+            "${SUPERVISOR_DIGEST}" \
+            "${SUPERVISOR_AMD64_DIGEST}"
+          verify_image \
+            "ghcr.io/mauro2020/abedome-core:${CORE_VERSION}" \
+            "${CORE_DIGEST}" \
+            "${CORE_AMD64_DIGEST}"
+
+      - name: Verify the signed stable OVA update bundle
+        env:
+          HASSOS_OVA_VERSION: ${{ inputs.hassos_ova_version }}
+          OTA_URL_TEMPLATE: ${{ inputs.ota_url_template }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends rauc
+
+          bundle_url="$(
+            printf '%s' "${OTA_URL_TEMPLATE}" \
+              | sed \
+                -e "s/{version}/${HASSOS_OVA_VERSION}/g" \
+                -e 's/{board}/ova/g' \
+                -e 's/{os_name}/haos/g'
+          )"
+          if printf '%s' "${bundle_url}" | grep -Fq '{'; then
+            echo "The OTA URL contains an unsupported unresolved placeholder."
+            exit 1
+          fi
+
+          curl --fail --silent --show-error --location \
+            "${bundle_url}" --output stable.raucb
+          rauc info \
+            --keyring buildroot-external/ota/abedome-update-signing.pem \
+            --output-format=json-2 \
+            stable.raucb > rauc-info.json
+          jq --exit-status \
+            --arg compatible "haos-ova" \
+            --arg version "${HASSOS_OVA_VERSION}" \
+            '.update.compatible == $compatible and .update.version == $version' \
+            rauc-info.json > /dev/null
+
+      - name: Download upstream stable manifest
+        run: |
+          curl --fail --silent --show-error --location \
+            "https://version.home-assistant.io/stable.json" \
+            --output upstream-stable.json
+
+      - name: Render validated ABEDOME stable manifest
+        env:
+          SUPERVISOR_VERSION: ${{ inputs.supervisor_version }}
+          SUPERVISOR_VERSION_BASELINE: ${{ inputs.supervisor_version_baseline }}
+          CORE_VERSION: ${{ inputs.core_version }}
+          CORE_VERSION_BASELINE: ${{ inputs.core_version_baseline }}
+          HASSOS_OVA_VERSION: ${{ inputs.hassos_ova_version }}
+          HASSOS_OVA_VERSION_BASELINE: ${{ inputs.hassos_ova_version_baseline }}
+          OTA_URL_TEMPLATE: ${{ inputs.ota_url_template }}
+        run: |
+          python3 scripts/render_abedome_update_manifest.py \
+            --channel stable \
+            --source upstream-stable.json \
+            --output site/updates/stable.json \
+            --supervisor-version "${SUPERVISOR_VERSION}" \
+            --supervisor-version-baseline "${SUPERVISOR_VERSION_BASELINE}" \
+            --supervisor-image "ghcr.io/mauro2020/abedome-supervisor" \
+            --core-version "${CORE_VERSION}" \
+            --core-version-baseline "${CORE_VERSION_BASELINE}" \
+            --core-image "ghcr.io/mauro2020/abedome-core" \
+            --hassos-ova-version "${HASSOS_OVA_VERSION}" \
+            --hassos-ova-version-baseline "${HASSOS_OVA_VERSION_BASELINE}" \
+            --ota-url-template "${OTA_URL_TEMPLATE}"
+
+      - name: Preserve the published development feed
+        run: |
+          dev_url="https://mauro2020.github.io/abedome-os/updates/dev.json"
+          curl --fail --silent --show-error --location \
+            "${dev_url}" --output /tmp/dev.json
+          jq -e '.channel == "dev"' /tmp/dev.json > /dev/null
+          install -D -m 0644 /tmp/dev.json site/updates/dev.json
+
+      - name: Create technical landing page
+        run: |
+          cat > site/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8">
+              <title>ABEDOME update metadata</title>
+            </head>
+            <body>
+              <h1>ABEDOME update metadata</h1>
+              <p>Development and stable manifests are published only after their separate approval gates.</p>
+            </body>
+          </html>
+          HTML
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: site
+
+  deploy:
+    name: Deploy stable feed
+    needs: render
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+
+      - name: Publish stable release summary
+        env:
+          SUPERVISOR_VERSION: ${{ inputs.supervisor_version }}
+          SUPERVISOR_DIGEST: ${{ inputs.supervisor_digest }}
+          SUPERVISOR_AMD64_DIGEST: ${{ inputs.supervisor_amd64_digest }}
+          CORE_VERSION: ${{ inputs.core_version }}
+          CORE_DIGEST: ${{ inputs.core_digest }}
+          CORE_AMD64_DIGEST: ${{ inputs.core_amd64_digest }}
+          HASSOS_OVA_VERSION: ${{ inputs.hassos_ova_version }}
+        run: |
+          {
+            echo "## ABEDOME stable update feed"
+            echo
+            echo "- Feed: \`${{ steps.deployment.outputs.page_url }}updates/stable.json\`"
+            echo "- Supervisor: \`${SUPERVISOR_VERSION}\` / \`${SUPERVISOR_DIGEST}\` / \`${SUPERVISOR_AMD64_DIGEST}\`"
+            echo "- Core: \`${CORE_VERSION}\` / \`${CORE_DIGEST}\` / \`${CORE_AMD64_DIGEST}\`"
+            echo "- Operating System: \`${HASSOS_OVA_VERSION}\`"
+            echo "- Supported target: \`ova / qemux86-64 / linux-amd64\`"
+            echo
+            echo "The stable feed was deployed only after protected-environment approval, immutable digest checks and RAUC signature validation."
+          } >> "$GITHUB_STEP_SUMMARY"

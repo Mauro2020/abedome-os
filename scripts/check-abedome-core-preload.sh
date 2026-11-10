@@ -62,6 +62,40 @@ grep -Fq '          if-no-files-found: error' <<< "${candidate_artifact}"
 update_index_job=$(sed -n '/^  update_index:$/,/^  bump_version:$/p' .github/workflows/build.yaml)
 grep -Fxq "    if: ${publish_condition}" <<< "${update_index_job}"
 
+core_platform_check=$(sed -n '/- name: Verify configured ABEDOME Core platform image/,/- name: Verify configured ABEDOME Supervisor platform image/p' .github/workflows/build.yaml)
+supervisor_platform_check=$(sed -n '/- name: Verify configured ABEDOME Supervisor platform image/,/- name: Override release channel/p' .github/workflows/build.yaml)
+# These GitHub expressions must remain literal in the workflow contract.
+# shellcheck disable=SC2016
+core_index_pin='expected_index_digest="${{ env.ABEDOME_PRELOADED_CORE_DIGEST }}"'
+# shellcheck disable=SC2016
+core_platform_pin='expected_platform_digest="${{ env.ABEDOME_PRELOADED_CORE_AMD64_DIGEST }}"'
+# shellcheck disable=SC2016
+supervisor_index_pin='expected_index_digest="${{ env.ABEDOME_PRELOADED_SUPERVISOR_DIGEST }}"'
+# shellcheck disable=SC2016
+supervisor_platform_pin='expected_platform_digest="${{ env.ABEDOME_PRELOADED_SUPERVISOR_AMD64_DIGEST }}"'
+# shellcheck disable=SC2016
+index_digest_extract='actual_index_digest="$(jq -r ".Digest" <<< "${inspect}")"'
+# shellcheck disable=SC2016
+index_digest_compare='if [ "${actual_index_digest}" != "${expected_index_digest}" ]; then'
+# shellcheck disable=SC2016
+core_raw_index='raw_index="$(skopeo inspect --raw "docker://${core_image}")"'
+# shellcheck disable=SC2016
+supervisor_raw_index='raw_index="$(skopeo inspect --raw "docker://${supervisor_image}")"'
+# shellcheck disable=SC2016
+platform_membership='any(.manifests[]?; .digest == \$digest and .platform.os == \"linux\" and .platform.architecture == \"amd64\")'
+grep -Fq "${core_index_pin}" <<< "${core_platform_check}"
+grep -Fq "${core_platform_pin}" <<< "${core_platform_check}"
+grep -Fq "${index_digest_extract}" <<< "${core_platform_check}"
+grep -Fq "${index_digest_compare}" <<< "${core_platform_check}"
+grep -Fq "${core_raw_index}" <<< "${core_platform_check}"
+grep -Fq "${platform_membership}" <<< "${core_platform_check}"
+grep -Fq "${supervisor_index_pin}" <<< "${supervisor_platform_check}"
+grep -Fq "${supervisor_platform_pin}" <<< "${supervisor_platform_check}"
+grep -Fq "${index_digest_extract}" <<< "${supervisor_platform_check}"
+grep -Fq "${index_digest_compare}" <<< "${supervisor_platform_check}"
+grep -Fq "${supervisor_raw_index}" <<< "${supervisor_platform_check}"
+grep -Fq "${platform_membership}" <<< "${supervisor_platform_check}"
+
 grep -Fxq 'data_image_size="1280M"' \
 	buildroot-external/package/hassio/create-data-partition.sh
 grep -Fxq '	data_image_size="6144M"' \

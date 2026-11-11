@@ -44,11 +44,54 @@ if [ -z "${debugfs_bin}" ]; then
 fi
 test -x "${debugfs_bin}"
 
-if "${debugfs_bin}" -R 'stat /docker/.wipe-scheduled' "${data_image}" \
-	> /dev/null 2>&1; then
-	echo "The candidate data image unexpectedly schedules a Docker data reset." >&2
+if ! docker_directory="$(
+	"${debugfs_bin}" -R 'ls -p /docker' "${data_image}" 2>&1
+)"; then
+	echo "Unable to inspect the candidate Docker data directory." >&2
+	printf '%s\n' "${docker_directory}" >&2
 	exit 1
 fi
+
+# The machine-readable debugfs listing is /inode/mode/uid/gid/name/size/.
+# Require its dot entry and reject every unexpected line so lookup and partial
+# read errors cannot be mistaken for an empty directory. awk exits 0 when the
+# marker is present, 1 when it is safely absent, and 2 for ambiguous output.
+docker_directory_status=0
+awk -F/ '
+	/^[[:space:]]*$/ { next }
+	/^debugfs [^[:space:]]+ \([^)]*\)$/ { next }
+	$1 == "" &&
+	$2 ~ /^[0-9]+$/ &&
+	$3 ~ /^[0-7]+$/ &&
+	$4 ~ /^[0-9]+$/ &&
+	$5 ~ /^[0-9]+$/ &&
+	NF == 8 &&
+	($7 == "" || $7 ~ /^[0-9]+$/) &&
+	$8 == "" {
+		if ($6 == ".") valid_directory = 1
+		if ($6 == ".wipe-scheduled") marker_found = 1
+		next
+	}
+	{ invalid_output = 1 }
+	END {
+		if (invalid_output || !valid_directory) exit 2
+		if (marker_found) exit 0
+		exit 1
+	}
+' <<< "${docker_directory}" || docker_directory_status=$?
+
+case "${docker_directory_status}" in
+	0)
+		echo "The candidate data image unexpectedly schedules a Docker data reset." >&2
+		exit 1
+		;;
+	1) ;;
+	*)
+		echo "Unable to verify the candidate Docker data directory." >&2
+		printf '%s\n' "${docker_directory}" >&2
+		exit 1
+		;;
+esac
 
 homeassistant_state="$(
 	"${debugfs_bin}" -R 'cat /supervisor/homeassistant.json' "${data_image}" 2> /dev/null

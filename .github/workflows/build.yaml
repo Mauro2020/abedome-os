@@ -543,10 +543,22 @@ jobs:
           command: |
             bash -ec '
               core_image="${{ env.ABEDOME_PRELOADED_CORE_IMAGE }}"
-              expected_digest="${{ env.ABEDOME_PRELOADED_CORE_AMD64_DIGEST }}"
+              expected_index_digest="${{ env.ABEDOME_PRELOADED_CORE_DIGEST }}"
+              expected_platform_digest="${{ env.ABEDOME_PRELOADED_CORE_AMD64_DIGEST }}"
               expected_version="${core_image##*:}"
               inspect="$(skopeo inspect --override-arch amd64 "docker://${core_image}")"
-              test "$(jq -r ".Digest" <<< "${inspect}")" = "${expected_digest}"
+              actual_index_digest="$(jq -r ".Digest" <<< "${inspect}")"
+              if [ "${actual_index_digest}" != "${expected_index_digest}" ]; then
+                echo "ABEDOME Core index digest ${actual_index_digest} does not match ${expected_index_digest}." >&2
+                exit 1
+              fi
+              raw_index="$(skopeo inspect --raw "docker://${core_image}")"
+              if ! jq -e --arg digest "${expected_platform_digest}" \
+                "any(.manifests[]?; .digest == \$digest and .platform.os == \"linux\" and .platform.architecture == \"amd64\")" \
+                <<< "${raw_index}" > /dev/null; then
+                echo "The approved linux/amd64 Core manifest was not found in ${core_image}." >&2
+                exit 1
+              fi
               test "$(jq -r ".Architecture" <<< "${inspect}")" = "amd64"
               test "$(jq -r ".Os" <<< "${inspect}")" = "linux"
               test "$(jq -r ".Labels[\"io.hass.arch\"]" <<< "${inspect}")" = "amd64"
@@ -562,10 +574,22 @@ jobs:
           command: |
             bash -ec '
               supervisor_image="${{ env.ABEDOME_PRELOADED_SUPERVISOR_IMAGE }}"
-              expected_digest="${{ env.ABEDOME_PRELOADED_SUPERVISOR_AMD64_DIGEST }}"
+              expected_index_digest="${{ env.ABEDOME_PRELOADED_SUPERVISOR_DIGEST }}"
+              expected_platform_digest="${{ env.ABEDOME_PRELOADED_SUPERVISOR_AMD64_DIGEST }}"
               expected_version="${supervisor_image##*:}"
               inspect="$(skopeo inspect --override-arch amd64 "docker://${supervisor_image}")"
-              test "$(jq -r ".Digest" <<< "${inspect}")" = "${expected_digest}"
+              actual_index_digest="$(jq -r ".Digest" <<< "${inspect}")"
+              if [ "${actual_index_digest}" != "${expected_index_digest}" ]; then
+                echo "ABEDOME Supervisor index digest ${actual_index_digest} does not match ${expected_index_digest}." >&2
+                exit 1
+              fi
+              raw_index="$(skopeo inspect --raw "docker://${supervisor_image}")"
+              if ! jq -e --arg digest "${expected_platform_digest}" \
+                "any(.manifests[]?; .digest == \$digest and .platform.os == \"linux\" and .platform.architecture == \"amd64\")" \
+                <<< "${raw_index}" > /dev/null; then
+                echo "The approved linux/amd64 Supervisor manifest was not found in ${supervisor_image}." >&2
+                exit 1
+              fi
               test "$(jq -r ".Architecture" <<< "${inspect}")" = "amd64"
               test "$(jq -r ".Os" <<< "${inspect}")" = "linux"
               test "$(jq -r ".Labels[\"io.hass.arch\"]" <<< "${inspect}")" = "amd64"

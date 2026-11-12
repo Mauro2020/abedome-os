@@ -176,9 +176,30 @@ touch "${fake_package}/images/${fake_archive}" "${fake_output}/images/data.ext4"
 printf '%s\n' \
 	'#!/usr/bin/env bash' \
 	'set -euo pipefail' \
+	'printf "debugfs 1.47.3 (14-May-2025)\\n" >&2' \
 	'case "$2" in' \
 	'  *homeassistant.json) cat "${FAKE_SUPERVISOR_STATE_DIR}/homeassistant.json" ;;' \
 	'  *updater.json) cat "${FAKE_SUPERVISOR_STATE_DIR}/updater.json" ;;' \
+	'  "ls -p /docker")' \
+	'    case "${FAKE_WIPE_MARKER_STATE:-absent}" in' \
+	'      absent)' \
+	'        printf "/42/040755/0/0/.//\\n"' \
+	'        printf "/2/040755/0/0/..//\\n"' \
+	'        ;;' \
+	'      present)' \
+	'        printf "/42/040755/0/0/.//\\n"' \
+	'        printf "/2/040755/0/0/..//\\n"' \
+	'        printf "/43/100600/0/0/.wipe-scheduled/0/\\n"' \
+	'        ;;' \
+	'      ambiguous)' \
+	'        printf "/42/040755/0/0/.//\\n"' \
+	'        printf "/2/040755/0/0/..//\\n"' \
+	'        printf "debugfs: simulated partial directory read\\n" >&2' \
+	'        ;;' \
+	'      failed) printf "debugfs: simulated command failure\\n" >&2; exit 1 ;;' \
+	'      *) exit 2 ;;' \
+	'    esac' \
+	'    ;;' \
 	'  *) exit 1 ;;' \
 	'esac' \
 	> "${temporary_dir}/bin/debugfs"
@@ -189,6 +210,18 @@ PATH="${temporary_dir}/bin:${PATH}" \
 	bash scripts/check-abedome-ova-build.sh \
 		"${fake_output}" "${core_image}" "${core_index_digest}" \
 		"${supervisor_image}" dev
+
+for marker_state in present ambiguous failed; do
+	if PATH="${temporary_dir}/bin:${PATH}" \
+		FAKE_SUPERVISOR_STATE_DIR="${fake_state}" \
+		FAKE_WIPE_MARKER_STATE="${marker_state}" \
+		bash scripts/check-abedome-ova-build.sh \
+			"${fake_output}" "${core_image}" "${core_index_digest}" \
+			"${supervisor_image}" dev > /dev/null 2>&1; then
+		echo "The post-build verifier accepted Docker reset marker state ${marker_state}." >&2
+		exit 1
+	fi
+done
 
 if PATH="${temporary_dir}/bin:${PATH}" \
 	FAKE_SUPERVISOR_STATE_DIR="${fake_state}" \
